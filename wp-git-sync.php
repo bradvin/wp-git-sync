@@ -16,7 +16,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'WPGS_VERSION', '0.1.0' );
 define( 'WPGS_PLUGIN_FILE', __FILE__ );
 define( 'WPGS_PLUGIN_DIR', __DIR__ );
-	require_once WPGS_PLUGIN_DIR . '/includes/class-wpgs-plugin.php';
+
+require_once WPGS_PLUGIN_DIR . '/includes/class-wpgs-plugin.php';
 
 add_action( 'plugins_loaded', static function () {
 	WPGS_Plugin::instance();

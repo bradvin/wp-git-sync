@@ -51,7 +51,13 @@ final class WPGS_Settings {
 		$out['branch']           = isset( $raw['branch'] ) ? sanitize_text_field( $raw['branch'] ) : $out['branch'];
 		$out['auth_method']      = isset( $raw['auth_method'] ) ? sanitize_key( $raw['auth_method'] ) : $out['auth_method'];
 		$out['ssh_key_path']     = isset( $raw['ssh_key_path'] ) ? sanitize_text_field( $raw['ssh_key_path'] ) : '';
-		$out['https_token']      = isset( $raw['https_token'] ) ? sanitize_text_field( $raw['https_token'] ) : '';
+		// Token: only update if user explicitly re-enters a non-empty value.
+		if ( isset( $raw['https_token'] ) && '' !== trim( (string) $raw['https_token'] ) ) {
+			$out['https_token'] = sanitize_text_field( $raw['https_token'] );
+		} else {
+			$prev              = get_option( self::OPTION_KEY, [] );
+			$out['https_token'] = is_array( $prev ) && isset( $prev['https_token'] ) ? sanitize_text_field( (string) $prev['https_token'] ) : '';
+		}
 		$out['local_clone_path'] = isset( $raw['local_clone_path'] ) ? untrailingslashit( sanitize_text_field( $raw['local_clone_path'] ) ) : $out['local_clone_path'];
 
 		if ( ! in_array( $out['auth_method'], [ 'ssh', 'https' ], true ) ) {

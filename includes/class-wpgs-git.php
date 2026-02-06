@@ -62,7 +62,7 @@ final class WPGS_Git {
 		$this->run( [ 'git', 'fetch', '--all', '--prune' ], $dir );
 
 		// Create branch if missing; otherwise checkout.
-		$result = $this->run( [ 'git', 'rev-parse', '--verify', $branch ], $dir, true );
+		$result = $this->run( [ 'git', 'rev-parse', '--verify', $branch ], $dir, true, false );
 		if ( 0 !== $result['code'] ) {
 			$this->run( [ 'git', 'checkout', '-b', $branch ], $dir );
 			return;
@@ -76,19 +76,40 @@ final class WPGS_Git {
 		$this->run( [ 'git', 'pull', '--rebase' ], $dir );
 	}
 
-	public function commit_and_push( string $message ): void {
+	public function add_all(): void {
 		$dir = (string) ( $this->settings['local_clone_path'] ?? '' );
-
 		$this->run( [ 'git', 'add', '-A' ], $dir );
+	}
 
-		// Commit may no-op if nothing changed.
+	public function add_path( string $relpath ): void {
+		$dir = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$this->run( [ 'git', 'add', '--', $relpath ], $dir );
+	}
+
+	public function has_changes(): bool {
+		$dir    = (string) ( $this->settings['local_clone_path'] ?? '' );
 		$result = $this->run( [ 'git', 'status', '--porcelain' ], $dir, true );
-		if ( '' === trim( $result['stdout'] ) ) {
-			return;
-		}
+		return '' !== trim( $result['stdout'] );
+	}
 
+	public function commit( string $message ): bool {
+		$dir = (string) ( $this->settings['local_clone_path'] ?? '' );
+		if ( ! $this->has_changes() ) {
+			return false;
+		}
 		$this->run( [ 'git', 'commit', '-m', $message ], $dir );
-		$this->run( [ 'git', 'push', 'origin', (string) ( $this->settings['branch'] ?? 'wp-content-sync' ) ], $dir );
+		return true;
+	}
+
+	public function amend_no_edit(): void {
+		$dir = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$this->run( [ 'git', 'commit', '--amend', '--no-edit' ], $dir );
+	}
+
+	public function push(): void {
+		$dir    = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$branch = (string) ( $this->settings['branch'] ?? 'wp-content-sync' );
+		$this->run( [ 'git', 'push', 'origin', $branch ], $dir );
 	}
 
 	public function head_commit(): string {
@@ -100,7 +121,7 @@ final class WPGS_Git {
 	/**
 	 * @return array{code:int,stdout:string,stderr:string}
 	 */
-	private function run( array $cmd, string $cwd, bool $capture = false ): array {
+	private function run( array $cmd, string $cwd, bool $capture = false, bool $throw = true ): array {
 		$descriptor_spec = [
 			0 => [ 'pipe', 'r' ],
 			1 => [ 'pipe', 'w' ],
@@ -130,7 +151,7 @@ final class WPGS_Git {
 
 		$code = proc_close( $process );
 
-		if ( 0 !== $code ) {
+		if ( 0 !== $code && $throw ) {
 			throw new RuntimeException( sprintf( "Git command failed (%d): %s", $code, $stderr ) );
 		}
 

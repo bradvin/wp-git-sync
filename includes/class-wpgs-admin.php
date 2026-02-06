@@ -88,7 +88,10 @@ final class WPGS_Admin {
 					</tr>
 					<tr>
 						<th scope="row"><label for="wpgs_https_token">HTTPS token</label></th>
-						<td><input class="regular-text" id="wpgs_https_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[https_token]" value="<?php echo esc_attr( $settings['https_token'] ); ?>" /> <p class="description">Stored in wp_options. Prefer a constant/env var in production.</p></td>
+						<td>
+							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_https_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[https_token]" value="" />
+							<p class="description">Leave blank to keep the existing token. Stored in wp_options (v0); prefer a constant/env var in production.</p>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="wpgs_local_clone_path">Local clone path</label></th>

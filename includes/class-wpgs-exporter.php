@@ -26,12 +26,17 @@ final class WPGS_Exporter {
 			}
 			$this->save_mapping( $mapping );
 
-			$this->git->commit_and_push( 'Export all posts/pages via WP Git Sync' );
+			$this->git->add_all();
+			$did_commit = $this->git->commit( 'Export all posts/pages via WP Git Sync' );
+			if ( $did_commit ) {
+				$head = $this->git->head_commit();
+				$this->stamp_mapping_commit( $mapping, $head );
+				$this->save_mapping( $mapping );
 
-			$head = $this->git->head_commit();
-			$this->stamp_mapping_commit( $mapping, $head );
-			$this->save_mapping( $mapping );
-
+				$this->git->add_path( WPGS_Paths::mapping_relpath() );
+				$this->git->amend_no_edit();
+				$this->git->push();
+			}
 		} finally {
 			$this->git->unlock();
 		}
@@ -53,23 +58,29 @@ final class WPGS_Exporter {
 			$this->export_one( $post, $mapping );
 			$this->save_mapping( $mapping );
 
-			$this->git->commit_and_push( sprintf( 'Export post %d (%s) via WP Git Sync', $post_id, $post->post_type ) );
+			$this->git->add_all();
+			$did_commit = $this->git->commit( sprintf( 'Export post %d (%s) via WP Git Sync', $post_id, $post->post_type ) );
+			if ( $did_commit ) {
+				$head = $this->git->head_commit();
+				$this->stamp_mapping_commit( $mapping, $head, $post_id );
+				$this->save_mapping( $mapping );
 
-			$head = $this->git->head_commit();
-			$this->stamp_mapping_commit( $mapping, $head, $post_id );
-			$this->save_mapping( $mapping );
+				$this->git->add_path( WPGS_Paths::mapping_relpath() );
+				$this->git->amend_no_edit();
+				$this->git->push();
+			}
 		} finally {
 			$this->git->unlock();
 		}
 	}
 
 	private function export_post_type( string $post_type, array &$mapping ): void {
+		// v0: simplest approach (OK for small sites). If/when needed, switch to a paged loop.
 		$q = new WP_Query([
 			'post_type'              => $post_type,
 			'post_status'            => [ 'publish', 'draft', 'pending', 'private' ],
-			'posts_per_page'         => 200,
-			'paged'                  => 1,
-			'no_found_rows'          => false,
+			'posts_per_page'         => -1,
+			'no_found_rows'          => true,
 			'update_post_meta_cache' => true,
 			'update_post_term_cache' => false,
 		]);
@@ -79,13 +90,6 @@ final class WPGS_Exporter {
 			$post = get_post();
 			if ( $post ) {
 				$this->export_one( $post, $mapping );
-			}
-
-			if ( $q->max_num_pages > $q->get( 'paged' ) ) {
-				$q->set( 'paged', $q->get( 'paged' ) + 1 );
-				$q->get_posts();
-			} else {
-				break;
 			}
 		}
 		wp_reset_postdata();
