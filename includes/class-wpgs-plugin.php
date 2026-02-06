@@ -15,6 +15,7 @@ require_once __DIR__ . '/class-wpgs-settings.php';
 require_once __DIR__ . '/class-wpgs-auth.php';
 require_once __DIR__ . '/class-wpgs-paths.php';
 require_once __DIR__ . '/class-wpgs-sync-meta.php';
+require_once __DIR__ . '/class-wpgs-diff.php';
 require_once __DIR__ . '/class-wpgs-github-client.php';
 require_once __DIR__ . '/class-wpgs-github-provider.php';
 require_once __DIR__ . '/class-wpgs-exporter.php';

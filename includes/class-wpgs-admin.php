@@ -32,6 +32,8 @@ final class WPGS_Admin {
 		add_action( 'admin_menu', [ __CLASS__, 'admin_menu' ] );
 		add_action( 'admin_post_wpgs_export_all', [ __CLASS__, 'handle_export_all' ] );
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
+		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
+		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
 		add_action( 'admin_post_wpgs_oauth_start', [ __CLASS__, 'handle_oauth_start' ] );
 		add_action( 'admin_post_wpgs_oauth_poll', [ __CLASS__, 'handle_oauth_poll' ] );
 		add_action( 'admin_post_wpgs_oauth_disconnect', [ __CLASS__, 'handle_oauth_disconnect' ] );
@@ -51,6 +53,15 @@ final class WPGS_Admin {
 			'manage_options',
 			'wpgs',
 			[ __CLASS__, 'render_tools_page' ]
+		);
+
+		// Diff/management page for a single post.
+		add_management_page(
+			'WP Git Sync — Diff',
+			'WP Git Sync Diff',
+			'manage_options',
+			'wpgs-diff',
+			[ __CLASS__, 'render_diff_page' ]
 		);
 
 		add_options_page(
@@ -266,6 +277,245 @@ final class WPGS_Admin {
 	}
 
 	/**
+	 * Handle "check for changes" for a single post.
+	 *
+	 * Computes diffs against remote GitHub content and stores the result in a
+	 * user-scoped transient, then redirects to a management page.
+	 *
+	 * @return void
+	 */
+	public static function handle_check_post(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		check_admin_referer( 'wpgs_check_post_' . $post_id );
+
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			wp_die( 'Invalid post.' );
+		}
+
+		$settings = WPGS_Settings::get();
+		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
+		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
+		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'wp-content-sync';
+		$token  = WPGS_Auth::get_token( $settings );
+
+		if ( '' === $owner || '' === $repo ) {
+			wp_die( 'GitHub owner/repo not configured.' );
+		}
+
+		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
+
+		$paths = WPGS_Diff::paths_for_post( $post );
+		$local = WPGS_Diff::build_local_payload( $post );
+
+		try {
+			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( 'Unable to fetch remote files for diff: ' . $e->getMessage() ) );
+		}
+
+		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
+		$local_content_n  = WPGS_Diff::normalize_newlines( (string) $local['content'] );
+		$remote_meta_n    = WPGS_Diff::normalize_newlines( (string) $remote_meta );
+		$local_meta_n     = WPGS_Diff::normalize_newlines( (string) $local['meta_json'] );
+
+		$content_changed = hash( 'sha256', $remote_content_n ) !== hash( 'sha256', $local_content_n );
+		$meta_changed    = hash( 'sha256', $remote_meta_n ) !== hash( 'sha256', $local_meta_n );
+
+		$content_diff = $content_changed ? wp_text_diff( $remote_content_n, $local_content_n, [ 'show_split_view' => true ] ) : '';
+		$meta_diff    = $meta_changed ? wp_text_diff( $remote_meta_n, $local_meta_n, [ 'show_split_view' => true ] ) : '';
+
+		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
+		set_transient( $transient_key, [
+			'checked_at'      => gmdate( 'c' ),
+			'repo'            => $owner . '/' . $repo,
+			'branch'          => $branch,
+			'post_id'         => (int) $post_id,
+			'post_type'       => (string) $post->post_type,
+			'content_path'    => (string) $paths['content_path'],
+			'meta_path'       => (string) $paths['meta_path'],
+			'content_changed' => (bool) $content_changed,
+			'meta_changed'    => (bool) $meta_changed,
+			'content_diff'    => (string) $content_diff,
+			'meta_diff'       => (string) $meta_diff,
+		], 5 * MINUTE_IN_SECONDS );
+
+		wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-diff', 'post_id' => (int) $post_id ], admin_url( 'tools.php' ) ) );
+		exit;
+	}
+
+	/**
+	 * Pull remote content from GitHub and overwrite the local post content.
+	 *
+	 * @return void
+	 */
+	public static function handle_pull_post(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		check_admin_referer( 'wpgs_pull_post_' . $post_id );
+
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			wp_die( 'Invalid post.' );
+		}
+
+		$settings = WPGS_Settings::get();
+		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
+		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
+		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'wp-content-sync';
+		$token  = WPGS_Auth::get_token( $settings );
+
+		if ( '' === $owner || '' === $repo ) {
+			wp_die( 'GitHub owner/repo not configured.' );
+		}
+
+		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
+		$paths = WPGS_Diff::paths_for_post( $post );
+
+		try {
+			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( 'Unable to fetch remote content: ' . $e->getMessage() ) );
+		}
+
+		$res = wp_update_post( [
+			'ID'           => (int) $post_id,
+			'post_content' => (string) $remote_content,
+		], true );
+
+		if ( is_wp_error( $res ) ) {
+			wp_die( esc_html( $res->get_error_message() ) );
+		}
+
+		// Re-check after pulling so the diff page reflects current state.
+		wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-diff', 'post_id' => (int) $post_id, 'wpgs' => 'pulled' ], admin_url( 'tools.php' ) ) );
+		exit;
+	}
+
+	/**
+	 * Render the diff/management page for a single post.
+	 *
+	 * @return void
+	 */
+	public static function render_diff_page(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+
+		$post_id = isset( $_GET['post_id'] ) ? (int) $_GET['post_id'] : 0;
+		$post = $post_id ? get_post( $post_id ) : null;
+
+		if ( ! $post ) {
+			echo '<div class="wrap"><h1>WP Git Sync — Diff</h1><p>' . esc_html__( 'Missing or invalid post_id.', 'wpgs' ) . '</p></div>';
+			return;
+		}
+
+		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
+		$diff = get_transient( $transient_key );
+		$diff = is_array( $diff ) ? $diff : null;
+
+		$edit_link = get_edit_post_link( (int) $post_id, 'raw' );
+		$action_url = admin_url( 'admin-post.php' );
+
+		$content_changed = (bool) ( $diff['content_changed'] ?? false );
+		$meta_changed    = (bool) ( $diff['meta_changed'] ?? false );
+
+		?>
+		<div class="wrap">
+			<h1>WP Git Sync — Diff</h1>
+			<p>
+				<strong>Post:</strong> <?php echo esc_html( (string) $post->post_title ); ?>
+				(<?php echo esc_html( (string) $post->post_type ); ?> #<?php echo (int) $post_id; ?>)
+			</p>
+			<p>
+				<?php if ( $edit_link ) : ?>
+					<a class="button" href="<?php echo esc_url( $edit_link ); ?>">Back to editor</a>
+				<?php endif; ?>
+			</p>
+
+			<h2>Actions</h2>
+			<div style="display:flex;gap:8px;flex-wrap:wrap;">
+				<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+					<input type="hidden" name="action" value="wpgs_check_post" />
+					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
+					<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
+				</form>
+
+				<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+					<input type="hidden" name="action" value="wpgs_export_post" />
+					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
+					<?php submit_button( 'Push local to GitHub (sync)', 'primary', 'submit', false ); ?>
+				</form>
+
+				<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
+					<input type="hidden" name="action" value="wpgs_pull_post" />
+					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
+					<?php submit_button( 'Pull from GitHub (overwrite post)', 'delete', 'submit', false ); ?>
+				</form>
+			</div>
+
+			<h2>Latest check</h2>
+			<?php if ( ! $diff ) : ?>
+				<p>No diff data yet. Click “Check for changes”.</p>
+			<?php else : ?>
+				<p>
+					<strong>Checked at:</strong> <?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?><br />
+					<strong>Repo:</strong> <code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code><br />
+					<strong>Branch:</strong> <code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code><br />
+					<strong>Content path:</strong> <code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code><br />
+					<strong>Meta path:</strong> <code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code>
+				</p>
+				<p>
+					<strong>Content changed:</strong> <?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?><br />
+					<strong>Meta changed:</strong> <?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?>
+				</p>
+
+				<h2>Content diff</h2>
+				<?php if ( ! $content_changed ) : ?>
+					<p>(no changes)</p>
+				<?php else : ?>
+					<?php
+						// wp_text_diff() returns HTML.
+						echo (string) ( $diff['content_diff'] ?? '' );
+					?>
+				<?php endif; ?>
+
+				<h2>Meta diff</h2>
+				<?php if ( ! $meta_changed ) : ?>
+					<p>(no changes)</p>
+				<?php else : ?>
+					<?php
+						echo (string) ( $diff['meta_diff'] ?? '' );
+					?>
+				<?php endif; ?>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Build a user-scoped transient key for a post diff.
+	 *
+	 * @param int $post_id Post ID.
+	 * @param int $user_id User ID.
+	 * @return string
+	 */
+	private static function diff_transient_key( int $post_id, int $user_id ): string {
+		return 'wpgs_diff_' . $post_id . '_' . $user_id;
+	}
+
+	/**
 	 * Start Device Flow OAuth.
 	 *
 	 * @return void
@@ -420,6 +670,13 @@ final class WPGS_Admin {
 			<p class="description">Only administrators can export/sync content.</p>
 		<?php else : ?>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="wpgs_check_post" />
+				<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
+				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post->ID ) ); ?>" />
+				<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
+			</form>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:6px;">
 				<input type="hidden" name="action" value="wpgs_export_post" />
 				<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
 				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post->ID ) ); ?>" />
