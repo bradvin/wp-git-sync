@@ -45,7 +45,9 @@ final class WPGS_Paths {
 	 * @return string Relative directory name.
 	 */
 	private static function content_dir_for_post_type( string $post_type ): string {
-		return sanitize_key( $post_type );
+		// Content files are grouped under posts/<post_type>/...
+		$post_type = sanitize_key( $post_type );
+		return 'posts/' . ( $post_type ? $post_type : 'unknown' );
 	}
 
 	/**
@@ -57,7 +59,8 @@ final class WPGS_Paths {
 	 * @return string Relative directory path.
 	 */
 	private static function meta_dir_for_post_type( string $post_type ): string {
-		return 'meta/' . sanitize_key( $post_type );
+		$post_type = sanitize_key( $post_type );
+		return 'meta/' . ( $post_type ? $post_type : 'unknown' );
 	}
 
 	/**
