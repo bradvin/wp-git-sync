@@ -25,12 +25,13 @@ final class WPGS_Settings {
 
 	public static function defaults(): array {
 		return [
-			'repo_url'         => '',
-			'branch'           => 'wp-content-sync',
-			'auth_method'      => 'ssh', // ssh|https
-			'ssh_key_path'     => '',
-			'https_token'      => '',
-			'local_clone_path' => WP_CONTENT_DIR . '/wpgs-repo',
+			// Accepts either "owner/repo" or a GitHub URL/SSH remote; we normalize on use.
+			'repo'       => '',
+			'branch'     => 'wp-content-sync',
+			'auth_method'=> 'pat', // pat|oauth
+			'pat_token'  => '',
+			// OAuth (v0 scaffold).
+			'oauth_access_token' => '',
 		];
 	}
 
@@ -47,21 +48,28 @@ final class WPGS_Settings {
 
 		$out = self::defaults();
 
-		$out['repo_url']         = isset( $raw['repo_url'] ) ? esc_url_raw( $raw['repo_url'] ) : '';
-		$out['branch']           = isset( $raw['branch'] ) ? sanitize_text_field( $raw['branch'] ) : $out['branch'];
-		$out['auth_method']      = isset( $raw['auth_method'] ) ? sanitize_key( $raw['auth_method'] ) : $out['auth_method'];
-		$out['ssh_key_path']     = isset( $raw['ssh_key_path'] ) ? sanitize_text_field( $raw['ssh_key_path'] ) : '';
-		// Token: only update if user explicitly re-enters a non-empty value.
-		if ( isset( $raw['https_token'] ) && '' !== trim( (string) $raw['https_token'] ) ) {
-			$out['https_token'] = sanitize_text_field( $raw['https_token'] );
-		} else {
-			$prev              = get_option( self::OPTION_KEY, [] );
-			$out['https_token'] = is_array( $prev ) && isset( $prev['https_token'] ) ? sanitize_text_field( (string) $prev['https_token'] ) : '';
-		}
-		$out['local_clone_path'] = isset( $raw['local_clone_path'] ) ? untrailingslashit( sanitize_text_field( $raw['local_clone_path'] ) ) : $out['local_clone_path'];
+		$out['repo']        = isset( $raw['repo'] ) ? sanitize_text_field( (string) $raw['repo'] ) : '';
+		$out['branch']      = isset( $raw['branch'] ) ? sanitize_text_field( (string) $raw['branch'] ) : $out['branch'];
+		$out['auth_method'] = isset( $raw['auth_method'] ) ? sanitize_key( (string) $raw['auth_method'] ) : $out['auth_method'];
 
-		if ( ! in_array( $out['auth_method'], [ 'ssh', 'https' ], true ) ) {
-			$out['auth_method'] = 'ssh';
+		// PAT: only update if user explicitly re-enters a non-empty value.
+		if ( isset( $raw['pat_token'] ) && '' !== trim( (string) $raw['pat_token'] ) ) {
+			$out['pat_token'] = sanitize_text_field( (string) $raw['pat_token'] );
+		} else {
+			$prev             = get_option( self::OPTION_KEY, [] );
+			$out['pat_token'] = is_array( $prev ) && isset( $prev['pat_token'] ) ? sanitize_text_field( (string) $prev['pat_token'] ) : '';
+		}
+
+		// OAuth access token (v0 scaffold): keep existing unless replaced.
+		if ( isset( $raw['oauth_access_token'] ) && '' !== trim( (string) $raw['oauth_access_token'] ) ) {
+			$out['oauth_access_token'] = sanitize_text_field( (string) $raw['oauth_access_token'] );
+		} else {
+			$prev                       = get_option( self::OPTION_KEY, [] );
+			$out['oauth_access_token'] = is_array( $prev ) && isset( $prev['oauth_access_token'] ) ? sanitize_text_field( (string) $prev['oauth_access_token'] ) : '';
+		}
+
+		if ( ! in_array( $out['auth_method'], [ 'pat', 'oauth' ], true ) ) {
+			$out['auth_method'] = 'pat';
 		}
 
 		return $out;

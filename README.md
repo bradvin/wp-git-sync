@@ -1,45 +1,49 @@
 # WP Git Sync
 
-WP Git Sync is a WordPress plugin that exports post content + meta into a Git repository branch, using deterministic file paths.
+WP Git Sync is a WordPress plugin that syncs post content + meta to a GitHub branch.
 
-> Status: early scaffold (v0.1). Shell `git` adapter first.
+> Status: early scaffold (v0.2). **In-memory GitHub API only** (no local filesystem writes, no `git` CLI).
 
 ## What it does (P0)
 
-- Configures a repo + branch (default: `wp-content-sync`)
-- Exports all posts/pages to:
-  - `posts/<post_type>/<post_id>-<slug>.md`
+- Configures a GitHub repo + branch (default: `wp-content-sync`)
+- Exports posts/pages to deterministic paths:
+  - `<post_type>/<post_id>-<slug>.md`
   - `meta/<post_type>/<post_id>-<slug>.json`
-- Maintains a mapping file at `wp-git-sync/mapping.json`
-- Commits + pushes changes to the configured branch
+- Commits changes via the GitHub Git Data API:
+  - create blobs → create tree → create commit → update branch ref
+- Stores per-post sync state in **post meta** (no mapping file):
+  - repo, branch, paths, hashes, last commit sha, last synced time
 - Adds a per-post metabox with sync status + “Sync this post now”
 
 ## Assumptions / requirements
 
-- The WordPress server can run `git` via `proc_open()`.
-- The server can authenticate to your Git remote via SSH (preferred) or HTTPS.
+- GitHub is `github.com` (no Enterprise support yet).
+- Authentication:
+  - PAT (supported)
+  - OAuth connect flow (UI scaffold only in v0; wiring up redirect next)
 - The plugin stores settings in `wp_options` (`wpgs_settings`).
-  - **Note:** HTTPS token storage in `wp_options` is not ideal for production. Prefer a constant or environment variable.
+  - Prefer defining `WPGS_GITHUB_TOKEN` in `wp-config.php` in production.
 
 ## Setup
 
 1. Install the plugin (copy into `wp-content/plugins/wp-git-sync/`).
 2. Activate it in WordPress.
 3. Go to **Settings → WP Git Sync** and set:
-   - Repo URL (SSH URL recommended: `git@github.com:org/repo.git`)
-   - Branch (defaults to `wp-content-sync`)
-   - Local clone path (defaults to `wp-content/wpgs-repo`)
+   - Repo (`owner/repo` or `https://github.com/owner/repo`)
+   - Branch
+   - PAT token (or `WPGS_GITHUB_TOKEN` constant)
 4. Go to **Tools → WP Git Sync** and click **Export all posts/pages now**.
 
 ## Notes
 
-- Exported content is currently raw `post_content` (no block serialization transforms yet).
-- Meta export uses `get_post_meta( $post_id )` and includes a small post header.
+- Exported content is currently raw `post_content`.
+- Meta export uses `get_post_meta( $post_id )` (all meta for now) and excludes internal `_wpgs_*` keys.
+- Meta export is filterable via `wpgs_export_postmeta`.
 
 ## Roadmap
 
 Next:
-- Fetch remote version per-post
-- Show diff
-- Apply changes with capability + nonce
-- On-save auto-push if the post was previously synced
+- Wire up GitHub OAuth redirect flow (“Connect to GitHub”)
+- Add rate-limit/backoff handling + batching for large initial exports
+- Add diff preview in the metabox
