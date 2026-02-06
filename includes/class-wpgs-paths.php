@@ -15,25 +15,14 @@ final class WPGS_Paths {
 	}
 
 	private static function content_dir_for_post_type( string $post_type ): string {
-		$post_type = sanitize_key( $post_type );
-		if ( 'post' === $post_type ) {
-			return 'posts';
-		}
-		if ( 'page' === $post_type ) {
-			return 'pages';
-		}
-		return 'cpt/' . $post_type;
+		// Repo structure rule: whatever the post_type is, use that as the folder name.
+		// Always keep posts in a subfolder (handled by post_relpath()).
+		return sanitize_key( $post_type );
 	}
 
 	private static function meta_dir_for_post_type( string $post_type ): string {
-		$post_type = sanitize_key( $post_type );
-		if ( 'post' === $post_type ) {
-			return 'meta/posts';
-		}
-		if ( 'page' === $post_type ) {
-			return 'meta/pages';
-		}
-		return 'meta/cpt/' . $post_type;
+		// Keep meta files grouped similarly, under meta/<post_type>/...
+		return 'meta/' . sanitize_key( $post_type );
 	}
 
 	public static function post_relpath( string $post_type, int $post_id, string $slug ): string {
