@@ -1,10 +1,31 @@
 <?php
+/**
+ * Admin UI and request handlers.
+ *
+ * @package WPGitSync
+ */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Admin pages + actions + metabox.
+ *
+ * Security notes:
+ * - Actions are protected by capability checks and nonces.
+ */
 final class WPGS_Admin {
+	/**
+	 * Register admin hooks.
+	 *
+	 * Side effects:
+	 * - Adds menu pages.
+	 * - Registers admin-post handlers.
+	 * - Registers post edit metabox.
+	 *
+	 * @return void
+	 */
 	public static function register(): void {
 		add_action( 'admin_menu', [ __CLASS__, 'admin_menu' ] );
 		add_action( 'admin_post_wpgs_export_all', [ __CLASS__, 'handle_export_all' ] );
@@ -12,6 +33,11 @@ final class WPGS_Admin {
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 	}
 
+	/**
+	 * Register admin menu pages.
+	 *
+	 * @return void
+	 */
 	public static function admin_menu(): void {
 		add_management_page(
 			'WP Git Sync',
@@ -30,17 +56,22 @@ final class WPGS_Admin {
 		);
 	}
 
+	/**
+	 * Render the Tools → WP Git Sync page.
+	 *
+	 * @return void
+	 */
 	public static function render_tools_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Insufficient permissions.' );
 		}
 
-		$nonce = wp_create_nonce( 'wpgs_export_all' );
+		$nonce      = wp_create_nonce( 'wpgs_export_all' );
 		$action_url = admin_url( 'admin-post.php' );
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
-			<p>Export WordPress content + meta into a Git repo/branch.</p>
+			<p>Export WordPress content + meta into a GitHub repo/branch.</p>
 
 			<h2>Export</h2>
 			<form method="post" action="<?php echo esc_url( $action_url ); ?>">
@@ -52,6 +83,11 @@ final class WPGS_Admin {
 		<?php
 	}
 
+	/**
+	 * Render the Settings → WP Git Sync page.
+	 *
+	 * @return void
+	 */
 	public static function render_settings_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Insufficient permissions.' );
@@ -66,10 +102,10 @@ final class WPGS_Admin {
 				<?php settings_fields( 'wpgs' ); ?>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row"><label for="wpgs_repo">Repo</label></th>
+						<th scope="row"><label for="wpgs_repo_url">Repo URL</label></th>
 						<td>
-							<input class="regular-text" id="wpgs_repo" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[repo]" value="<?php echo esc_attr( $settings['repo'] ); ?>" />
-							<p class="description">Use <code>owner/repo</code> or a GitHub URL (e.g. <code>https://github.com/owner/repo</code>).</p>
+							<input class="regular-text" id="wpgs_repo_url" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[repo_url]" value="<?php echo esc_attr( $settings['repo_url'] ); ?>" />
+							<p class="description">Currently uses git remote URL (shell adapter). Planned: GitHub owner/repo for API adapter.</p>
 						</td>
 					</tr>
 					<tr>
@@ -77,28 +113,29 @@ final class WPGS_Admin {
 						<td><input class="regular-text" id="wpgs_branch" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[branch]" value="<?php echo esc_attr( $settings['branch'] ); ?>" /></td>
 					</tr>
 					<tr>
-						<th scope="row">Auth</th>
+						<th scope="row">Auth method</th>
 						<td>
 							<fieldset>
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_method]" value="oauth" <?php checked( 'oauth', $settings['auth_method'] ); ?> /> Connect to GitHub (OAuth)</label><br />
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_method]" value="pat" <?php checked( 'pat', $settings['auth_method'] ); ?> /> Personal Access Token (PAT)</label>
+								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_method]" value="ssh" <?php checked( 'ssh', $settings['auth_method'] ); ?> /> SSH</label><br />
+								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_method]" value="https" <?php checked( 'https', $settings['auth_method'] ); ?> /> HTTPS (token)</label>
 							</fieldset>
-							<p class="description">OAuth redirect flow not wired up yet (next). For now, use PAT.</p>
+							<p class="description">Planned: Device Flow OAuth + fine-grained PAT.</p>
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="wpgs_pat_token">PAT token</label></th>
+						<th scope="row"><label for="wpgs_ssh_key_path">SSH key path</label></th>
+						<td><input class="regular-text" id="wpgs_ssh_key_path" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[ssh_key_path]" value="<?php echo esc_attr( $settings['ssh_key_path'] ); ?>" /> <p class="description">Optional. If blank, uses default SSH agent/keys on the host.</p></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="wpgs_https_token">HTTPS token</label></th>
 						<td>
-							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_pat_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_token]" value="" />
-							<p class="description">Leave blank to keep the existing token. Prefer defining <code>WPGS_GITHUB_TOKEN</code> in <code>wp-config.php</code>.</p>
+							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_https_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[https_token]" value="" />
+							<p class="description">Leave blank to keep the existing token. Stored in wp_options (v0); prefer a constant/env var in production.</p>
 						</td>
 					</tr>
 					<tr>
-						<th scope="row">OAuth</th>
-						<td>
-							<p><button class="button" type="button" disabled>Connect to GitHub</button></p>
-							<p class="description">OAuth UI scaffold only in v0.</p>
-						</td>
+						<th scope="row"><label for="wpgs_local_clone_path">Local clone path</label></th>
+						<td><input class="regular-text" id="wpgs_local_clone_path" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[local_clone_path]" value="<?php echo esc_attr( $settings['local_clone_path'] ); ?>" /> <p class="description">Directory on the WordPress server where the repo is cloned.</p></td>
 					</tr>
 				</table>
 				<?php submit_button( 'Save settings' ); ?>
@@ -107,6 +144,19 @@ final class WPGS_Admin {
 		<?php
 	}
 
+	/**
+	 * Handle export-all admin action.
+	 *
+	 * Security:
+	 * - Requires manage_options.
+	 * - Nonce-protected.
+	 *
+	 * Side effects:
+	 * - Writes files into the configured repo clone.
+	 * - Runs git commands (proc_open).
+	 *
+	 * @return void
+	 */
 	public static function handle_export_all(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Insufficient permissions.' );
@@ -123,6 +173,19 @@ final class WPGS_Admin {
 		}
 	}
 
+	/**
+	 * Handle per-post export admin action.
+	 *
+	 * Security:
+	 * - Requires edit_posts.
+	 * - Nonce-protected per post.
+	 *
+	 * Side effects:
+	 * - Writes files into the configured repo clone.
+	 * - Runs git commands (proc_open).
+	 *
+	 * @return void
+	 */
 	public static function handle_export_post(): void {
 		if ( ! current_user_can( 'edit_posts' ) ) {
 			wp_die( 'Insufficient permissions.' );
@@ -141,6 +204,11 @@ final class WPGS_Admin {
 		}
 	}
 
+	/**
+	 * Register per-post metabox on supported post types.
+	 *
+	 * @return void
+	 */
 	public static function register_metabox(): void {
 		$post_types = [ 'post', 'page' ];
 		foreach ( $post_types as $pt ) {
@@ -148,22 +216,23 @@ final class WPGS_Admin {
 		}
 	}
 
+	/**
+	 * Render the per-post metabox.
+	 *
+	 * @param WP_Post $post Current post.
+	 * @return void
+	 */
 	public static function render_metabox( WP_Post $post ): void {
-		$state  = WPGS_Sync_Meta::get( (int) $post->ID );
-		$synced = WPGS_Sync_Meta::is_synced( (int) $post->ID );
+		$mapping = self::load_mapping_for_admin( WPGS_Settings::get() );
+		$item    = $mapping['items'][ (string) $post->ID ] ?? null;
 
-		$status = $synced ? 'Synced' : 'Not synced yet';
+		$status = $item ? 'Synced' : 'Not synced yet';
 		?>
 		<p><strong>Status:</strong> <?php echo esc_html( $status ); ?></p>
-		<?php if ( $synced ) : ?>
-			<p><strong>Repo:</strong><br /><code><?php echo esc_html( $state['repo'] ); ?></code></p>
-			<p><strong>Branch:</strong><br /><code><?php echo esc_html( $state['branch'] ); ?></code></p>
-			<p><strong>Content path:</strong><br /><code><?php echo esc_html( $state['content_path'] ); ?></code></p>
-			<p><strong>Last commit:</strong><br /><code><?php echo esc_html( $state['last_commit'] ); ?></code></p>
-			<p><strong>Last synced:</strong><br /><?php echo esc_html( $state['last_synced_at'] ); ?></p>
-		<?php endif; ?>
-		<?php if ( ! empty( $state['last_error'] ) ) : ?>
-			<p><strong>Last error:</strong><br /><code style="white-space:pre-wrap;display:block;"><?php echo esc_html( $state['last_error'] ); ?></code></p>
+		<?php if ( $item ) : ?>
+			<p><strong>Content path:</strong><br /><code><?php echo esc_html( $item['content_path'] ?? '' ); ?></code></p>
+			<p><strong>Last commit:</strong><br /><code><?php echo esc_html( $item['last_synced_commit'] ?? '' ); ?></code></p>
+			<p><strong>Last synced:</strong><br /><?php echo esc_html( $item['last_synced_at'] ?? '' ); ?></p>
 		<?php endif; ?>
 
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -175,7 +244,22 @@ final class WPGS_Admin {
 		<?php
 	}
 
-	// Mapping file removed in the in-memory GitHub implementation.
-	// Per-post sync state lives in postmeta.
-
+	/**
+	 * Load mapping.json for display purposes.
+	 *
+	 * Side effects:
+	 * - Reads mapping file from local clone path.
+	 *
+	 * @param array<string,mixed> $settings Settings.
+	 * @return array<string,mixed>
+	 */
+	private static function load_mapping_for_admin( array $settings ): array {
+		$dir  = (string) ( $settings['local_clone_path'] ?? '' );
+		$file = $dir ? ( $dir . '/' . WPGS_Paths::mapping_relpath() ) : '';
+		if ( ! $file || ! file_exists( $file ) ) {
+			return [ 'items' => [] ];
+		}
+		$json = json_decode( (string) file_get_contents( $file ), true );
+		return is_array( $json ) ? $json : [ 'items' => [] ];
+	}
 }

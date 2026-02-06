@@ -5,6 +5,8 @@
  * This is intentionally repo-only logic (no rewrite rules / permalinks), used to
  * decide where content and meta files should be written within the synced git
  * working tree.
+ *
+ * @package WPGitSync
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

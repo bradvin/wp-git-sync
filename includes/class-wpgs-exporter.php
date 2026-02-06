@@ -1,45 +1,107 @@
 <?php
+/**
+ * Exporter implementation.
+ *
+ * Currently exports to a local git working tree (shell git adapter).
+ *
+ * Planned (per Brad): replace git/proc_open with a GitHub API adapter using
+ * Device Flow OAuth and/or fine-grained PAT.
+ *
+ * @package WPGitSync
+ */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Exports WordPress posts/pages to GitHub (in-memory, no filesystem, no git CLI).
+ * Exports WordPress content/meta into deterministic files.
+ *
+ * Side effects:
+ * - Writes markdown + json files into the configured local clone directory.
+ * - Writes/updates mapping.json.
+ * - Writes/updates repo-root README.md index.
+ * - Runs git commands via WPGS_Git.
  */
 final class WPGS_Exporter {
+	/**
+	 * Plugin settings.
+	 *
+	 * @var array<string,mixed>
+	 */
 	private array $settings;
 
+	/**
+	 * Git adapter.
+	 */
+	private WPGS_Git $git;
+
+	/**
+	 * @param array<string,mixed> $settings Settings.
+	 */
 	public function __construct( array $settings ) {
 		$this->settings = $settings;
+		$this->git      = new WPGS_Git( $settings );
 	}
 
+	/**
+	 * Export all posts for the given post types.
+	 *
+	 * Security:
+	 * - Should only be invoked from an admin action with a nonce.
+	 *
+	 * Side effects:
+	 * - Writes many files in the local clone directory.
+	 * - Runs git clone/checkout/pull/commit/push.
+	 *
+	 * @param string[] $post_types List of post type slugs.
+	 * @return void
+	 * @throws InvalidArgumentException When configuration is invalid.
+	 * @throws RuntimeException On git failures.
+	 */
 	public function export_all( array $post_types = [ 'post', 'page' ] ): void {
-		foreach ( $post_types as $post_type ) {
-			$q = new WP_Query([
-				'post_type'              => $post_type,
-				'post_status'            => [ 'publish', 'draft', 'pending', 'private' ],
-				'posts_per_page'         => -1,
-				'no_found_rows'          => true,
-				'update_post_meta_cache' => true,
-				'update_post_term_cache' => false,
-			]);
+		$this->git->lock();
+		try {
+			$this->git->ensure_clone();
+			$this->git->checkout_branch();
+			$this->git->pull();
 
-			while ( $q->have_posts() ) {
-				$q->the_post();
-				$post = get_post();
-				if ( $post ) {
-					$this->export_post( (int) $post->ID );
-				}
+			$mapping = $this->load_mapping();
+			foreach ( $post_types as $post_type ) {
+				$this->export_post_type( $post_type, $mapping );
 			}
-			wp_reset_postdata();
+			$this->save_mapping( $mapping );
+			$this->write_repo_index_readme( $mapping );
+
+			$this->git->add_all();
+			$did_commit = $this->git->commit( 'Export all posts/pages via WP Git Sync' );
+			if ( $did_commit ) {
+				$head = $this->git->head_commit();
+				$this->stamp_mapping_commit( $mapping, $head );
+				$this->save_mapping( $mapping );
+
+				$this->git->add_path( WPGS_Paths::mapping_relpath() );
+				$this->git->amend_no_edit();
+				$this->git->push();
+			}
+		} finally {
+			$this->git->unlock();
 		}
 	}
 
 	/**
-	 * Sync a single post to GitHub.
+	 * Export a single post.
 	 *
-	 * If nothing changed (based on content/meta hashes), this is a no-op.
+	 * Side effects:
+	 * - Writes/updates that post's content/meta files.
+	 * - Updates mapping.json.
+	 * - Regenerates the repo-root README.md index.
+	 * - Runs git commit/push if there are changes.
+	 *
+	 * @param int $post_id WordPress post ID.
+	 * @return void
+	 * @throws InvalidArgumentException If the post cannot be loaded.
+	 * @throws RuntimeException On git failures.
 	 */
 	public function export_post( int $post_id ): void {
 		$post = get_post( $post_id );
@@ -47,135 +109,110 @@ final class WPGS_Exporter {
 			throw new InvalidArgumentException( 'Invalid post.' );
 		}
 
-		[ $repo, $branch, $token ] = $this->resolve_target();
-
-		$slug        = $post->post_name ? (string) $post->post_name : (string) $post->ID;
-		$content_rel = WPGS_Paths::post_relpath( (string) $post->post_type, (int) $post->ID, $slug );
-		$meta_rel    = WPGS_Paths::meta_relpath( (string) $post->post_type, (int) $post->ID, $slug );
-
-		$content = (string) $post->post_content;
-		$meta    = $this->build_meta_payload( $post );
-		$meta_js = $this->stable_json( $meta ) . "\n";
-
-		$content_hash = hash( 'sha256', $content );
-		$meta_hash    = hash( 'sha256', $meta_js );
-
-		$prev = WPGS_Sync_Meta::get( $post_id );
-		if ( $prev['content_hash'] === $content_hash
-			&& $prev['meta_hash'] === $meta_hash
-			&& $prev['content_path'] === $content_rel
-			&& $prev['meta_path'] === $meta_rel
-			&& $prev['repo'] === $repo
-			&& $prev['branch'] === $branch
-		) {
-			return;
-		}
-
-		$client   = new WPGS_GitHub_Client( $token );
-		$provider = new WPGS_GitHub_Provider( $client, $repo );
-
+		$this->git->lock();
 		try {
-			$result = $provider->commit_files(
-				$branch,
-				sprintf( 'Sync post %d (%s) via WP Git Sync', (int) $post_id, (string) $post->post_type ),
-				[
-					$content_rel => $content,
-					$meta_rel    => $meta_js,
-				]
-			);
+			$this->git->ensure_clone();
+			$this->git->checkout_branch();
+			$this->git->pull();
 
-			WPGS_Sync_Meta::set_success( $post_id, [
-				'repo'           => $repo,
-				'branch'         => $branch,
-				'content_path'   => $content_rel,
-				'meta_path'      => $meta_rel,
-				'last_commit'    => (string) $result['commit_sha'],
-				'last_synced_at' => gmdate( 'c' ),
-				'content_hash'   => $content_hash,
-				'meta_hash'      => $meta_hash,
-			] );
-		} catch ( Throwable $e ) {
-			WPGS_Sync_Meta::set_error( $post_id, $e->getMessage() );
-			throw $e;
+			$mapping = $this->load_mapping();
+			$this->export_one( $post, $mapping );
+			$this->save_mapping( $mapping );
+			$this->write_repo_index_readme( $mapping );
+
+			$this->git->add_all();
+			$did_commit = $this->git->commit( sprintf( 'Export post %d (%s) via WP Git Sync', $post_id, $post->post_type ) );
+			if ( $did_commit ) {
+				$head = $this->git->head_commit();
+				$this->stamp_mapping_commit( $mapping, $head, $post_id );
+				$this->save_mapping( $mapping );
+
+				$this->git->add_path( WPGS_Paths::mapping_relpath() );
+				$this->git->amend_no_edit();
+				$this->git->push();
+			}
+		} finally {
+			$this->git->unlock();
 		}
 	}
 
 	/**
-	 * @return array{0:string,1:string,2:string} repo, branch, token
+	 * Export all posts for a specific post type.
+	 *
+	 * @param string               $post_type Post type key.
+	 * @param array<string,mixed> &$mapping   Mapping array (mutated).
+	 * @return void
 	 */
-	private function resolve_target(): array {
-		$repo_raw = isset( $this->settings['repo'] ) ? (string) $this->settings['repo'] : '';
-		$branch   = isset( $this->settings['branch'] ) ? (string) $this->settings['branch'] : 'wp-content-sync';
+	private function export_post_type( string $post_type, array &$mapping ): void {
+		// v0: simplest approach (OK for small sites). If/when needed, switch to a paged loop.
+		$q = new WP_Query([
+			'post_type'              => $post_type,
+			'post_status'            => [ 'publish', 'draft', 'pending', 'private' ],
+			'posts_per_page'         => -1,
+			'no_found_rows'          => true,
+			'update_post_meta_cache' => true,
+			'update_post_term_cache' => false,
+		]);
 
-		$repo = $this->normalize_repo( $repo_raw );
-		if ( '' === $repo ) {
-			throw new InvalidArgumentException( 'Repo is not configured. Expected owner/repo or a GitHub URL.' );
+		while ( $q->have_posts() ) {
+			$q->the_post();
+			$post = get_post();
+			if ( $post ) {
+				$this->export_one( $post, $mapping );
+			}
 		}
+		wp_reset_postdata();
+	}
 
-		$token       = '';
-		$auth_method = isset( $this->settings['auth_method'] ) ? (string) $this->settings['auth_method'] : 'pat';
-		if ( 'oauth' === $auth_method ) {
-			$token = isset( $this->settings['oauth_access_token'] ) ? (string) $this->settings['oauth_access_token'] : '';
-		} else {
-			// Prefer wp-config constant if defined.
-			if ( defined( 'WPGS_GITHUB_TOKEN' ) && is_string( WPGS_GITHUB_TOKEN ) && '' !== trim( WPGS_GITHUB_TOKEN ) ) {
-				$token = (string) WPGS_GITHUB_TOKEN;
-			} else {
-				$token = isset( $this->settings['pat_token'] ) ? (string) $this->settings['pat_token'] : '';
+	/**
+	 * Export one WP_Post into deterministic content/meta files and update mapping.
+	 *
+	 * Side effects:
+	 * - Writes content + meta files.
+	 * - Removes stale files if paths changed (based on mapping).
+	 *
+	 * @param WP_Post             $post    Post object.
+	 * @param array<string,mixed> &$mapping Mapping array (mutated).
+	 * @return void
+	 */
+	private function export_one( WP_Post $post, array &$mapping ): void {
+		$dir  = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$slug = $post->post_name ? $post->post_name : (string) $post->ID;
+
+		$content_rel = WPGS_Paths::post_relpath( $post->post_type, (int) $post->ID, $slug );
+		$meta_rel    = WPGS_Paths::meta_relpath( $post->post_type, (int) $post->ID, $slug );
+
+		// If this post was previously exported to different paths, remove stale files.
+		$prev = $mapping['items'][ (string) $post->ID ] ?? null;
+		if ( is_array( $prev ) ) {
+			$prev_content = isset( $prev['content_path'] ) ? (string) $prev['content_path'] : '';
+			$prev_meta    = isset( $prev['meta_path'] ) ? (string) $prev['meta_path'] : '';
+			if ( $prev_content && $prev_content !== $content_rel ) {
+				$abs = $dir . '/' . ltrim( $prev_content, '/' );
+				if ( file_exists( $abs ) ) {
+					@unlink( $abs );
+				}
+			}
+			if ( $prev_meta && $prev_meta !== $meta_rel ) {
+				$abs = $dir . '/' . ltrim( $prev_meta, '/' );
+				if ( file_exists( $abs ) ) {
+					@unlink( $abs );
+				}
 			}
 		}
 
-		$token = trim( $token );
-		if ( '' === $token ) {
-			throw new InvalidArgumentException( 'GitHub token is not configured.' );
-		}
+		$content_abs = $dir . '/' . $content_rel;
+		$meta_abs    = $dir . '/' . $meta_rel;
+		$mapping_abs = $dir . '/' . WPGS_Paths::mapping_relpath();
 
-		return [ $repo, trim( $branch ), $token ];
-	}
+		wp_mkdir_p( dirname( $content_abs ) );
+		wp_mkdir_p( dirname( $meta_abs ) );
+		wp_mkdir_p( dirname( $mapping_abs ) );
 
-	private function normalize_repo( string $repo ): string {
-		$repo = trim( $repo );
-		if ( '' === $repo ) {
-			return '';
-		}
+		// Content file: raw post_content (no transforms yet).
+		file_put_contents( $content_abs, $post->post_content );
 
-		if ( preg_match( '#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo ) ) {
-			return $repo;
-		}
-
-		if ( preg_match( '#^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$#i', $repo, $m ) ) {
-			return $m[1] . '/' . $m[2];
-		}
-
-		if ( preg_match( '#^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$#i', $repo, $m ) ) {
-			return $m[1] . '/' . $m[2];
-		}
-
-		return '';
-	}
-
-	/**
-	 * @return array<string,mixed>
-	 */
-	private function build_meta_payload( WP_Post $post ): array {
-		$all_meta = get_post_meta( $post->ID );
-		if ( ! is_array( $all_meta ) ) {
-			$all_meta = [];
-		}
-
-		foreach ( WPGS_Sync_Meta::internal_keys() as $k ) {
-			unset( $all_meta[ $k ] );
-		}
-
-		/**
-		 * Filter exported post meta.
-		 *
-		 * @param array<string,mixed> $all_meta
-		 * @param int                $post_id
-		 */
-		$all_meta = apply_filters( 'wpgs_export_postmeta', $all_meta, (int) $post->ID );
-
-		return [
+		$meta = [
 			'post' => [
 				'ID'                => (int) $post->ID,
 				'post_type'         => (string) $post->post_type,
@@ -185,25 +222,184 @@ final class WPGS_Exporter {
 				'post_date_gmt'     => (string) $post->post_date_gmt,
 				'post_modified_gmt' => (string) $post->post_modified_gmt,
 			],
-			'meta' => $all_meta,
+			'meta' => get_post_meta( $post->ID ),
 		];
+
+		file_put_contents( $meta_abs, wp_json_encode( $meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
+
+		$mapping['items'][ (string) $post->ID ] = array_merge(
+			$mapping['items'][ (string) $post->ID ] ?? [],
+			[
+				'post_id'        => (int) $post->ID,
+				'post_type'      => (string) $post->post_type,
+				'slug'           => (string) WPGS_Paths::safe_slug( $slug ),
+				'content_path'   => $content_rel,
+				'meta_path'      => $meta_rel,
+				'last_synced_at' => gmdate( 'c' ),
+			]
+		);
 	}
 
-	private function stable_json( $data ): string {
-		$data = $this->ksort_recursive( $data );
-		return (string) wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+	/**
+	 * Load mapping.json from the repo clone.
+	 *
+	 * Side effects:
+	 * - Reads local filesystem.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private function load_mapping(): array {
+		$dir  = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$file = $dir . '/' . WPGS_Paths::mapping_relpath();
+
+		if ( ! file_exists( $file ) ) {
+			return [
+				'version'      => WPGS_VERSION,
+				'repo_url'     => (string) ( $this->settings['repo_url'] ?? '' ),
+				'branch'       => (string) ( $this->settings['branch'] ?? 'wp-content-sync' ),
+				'generated_at' => gmdate( 'c' ),
+				'items'        => [],
+			];
+		}
+
+		$json = json_decode( (string) file_get_contents( $file ), true );
+		return is_array( $json ) ? $json : [ 'items' => [] ];
 	}
 
-	private function ksort_recursive( $value ) {
-		if ( is_array( $value ) ) {
-			$is_assoc = array_keys( $value ) !== range( 0, count( $value ) - 1 );
-			if ( $is_assoc ) {
-				ksort( $value );
+	/**
+	 * Save mapping.json to the repo clone.
+	 *
+	 * Side effects:
+	 * - Writes local filesystem.
+	 *
+	 * @param array<string,mixed> $mapping Mapping data.
+	 * @return void
+	 */
+	private function save_mapping( array $mapping ): void {
+		$dir  = (string) ( $this->settings['local_clone_path'] ?? '' );
+		$file = $dir . '/' . WPGS_Paths::mapping_relpath();
+		wp_mkdir_p( dirname( $file ) );
+
+		$mapping['version']      = WPGS_VERSION;
+		$mapping['repo_url']     = (string) ( $this->settings['repo_url'] ?? '' );
+		$mapping['branch']       = (string) ( $this->settings['branch'] ?? 'wp-content-sync' );
+		$mapping['generated_at'] = gmdate( 'c' );
+
+		file_put_contents( $file, wp_json_encode( $mapping, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
+	}
+
+	/**
+	 * Stamp mapping entries with the commit SHA.
+	 *
+	 * @param array<string,mixed> &$mapping Mapping data (mutated).
+	 * @param string              $commit Commit SHA.
+	 * @param int                 $only_post_id Optional; if non-zero, stamp only this post.
+	 * @return void
+	 */
+	private function stamp_mapping_commit( array &$mapping, string $commit, int $only_post_id = 0 ): void {
+		foreach ( $mapping['items'] as $id => &$item ) {
+			if ( $only_post_id && (int) $id !== $only_post_id ) {
+				continue;
 			}
-			foreach ( $value as $k => $v ) {
-				$value[ $k ] = $this->ksort_recursive( $v );
+			$item['last_synced_commit'] = $commit;
+			$item['last_synced_at']     = gmdate( 'c' );
+		}
+	}
+
+	/**
+	 * Generate a deterministic repo-root README.md index.
+	 *
+	 * Side effects:
+	 * - Writes README.md in repo root.
+	 *
+	 * @param array<string,mixed> $mapping Mapping data.
+	 * @return void
+	 */
+	private function write_repo_index_readme( array $mapping ): void {
+		$dir = (string) ( $this->settings['local_clone_path'] ?? '' );
+		if ( '' === $dir ) {
+			return;
+		}
+
+		$pages = [];
+		$posts = [];
+		$other = [];
+
+		$items = isset( $mapping['items'] ) && is_array( $mapping['items'] ) ? $mapping['items'] : [];
+		foreach ( $items as $id => $item ) {
+			$post_id = (int) $id;
+			$post    = get_post( $post_id );
+			if ( ! $post ) {
+				continue;
+			}
+
+			$title     = $post->post_title ? (string) $post->post_title : sprintf( 'Post %d', $post_id );
+			$permalink = get_permalink( $post_id );
+			$path      = isset( $item['content_path'] ) ? (string) $item['content_path'] : '';
+			if ( ! $permalink || ! $path ) {
+				continue;
+			}
+
+			$line = sprintf( '- [%s](%s) — [file](%s)', $this->md_escape( $title ), $permalink, $path );
+			if ( 'page' === $post->post_type ) {
+				$pages[] = $line;
+			} elseif ( 'post' === $post->post_type ) {
+				$posts[] = $line;
+			} else {
+				$other[ $post->post_type ][] = $line;
 			}
 		}
-		return $value;
+
+		sort( $pages );
+		sort( $posts );
+		ksort( $other );
+		foreach ( $other as $pt => $lines ) {
+			sort( $other[ $pt ] );
+		}
+
+		$out   = [];
+		$out[] = '# WP Git Sync Index';
+		$out[] = '';
+		$out[] = 'This file is generated by the WP Git Sync plugin. Do not edit by hand.';
+		$out[] = '';
+		$out[] = sprintf( '- Generated at: %s', gmdate( 'c' ) );
+		$out[] = sprintf( '- Branch: `%s`', (string) ( $mapping['branch'] ?? '' ) );
+		$out[] = '';
+
+		$out[] = '## Pages';
+		$out[] = '';
+		$out   = array_merge( $out, $pages ?: [ '- (none)' ] );
+		$out[] = '';
+
+		$out[] = '## Posts';
+		$out[] = '';
+		$out   = array_merge( $out, $posts ?: [ '- (none)' ] );
+		$out[] = '';
+
+		$out[] = '## Other';
+		$out[] = '';
+		if ( empty( $other ) ) {
+			$out[] = '- (none)';
+		} else {
+			foreach ( $other as $pt => $lines ) {
+				$out[] = '### ' . $pt;
+				$out[] = '';
+				$out   = array_merge( $out, $lines );
+				$out[] = '';
+			}
+		}
+
+		file_put_contents( $dir . '/README.md', implode( "\n", $out ) . "\n" );
+	}
+
+	/**
+	 * Escape a string for markdown link text.
+	 *
+	 * @param string $text Text.
+	 * @return string Escaped text.
+	 */
+	private function md_escape( string $text ): string {
+		// Minimal escaping for link text.
+		return str_replace( [ '[', ']' ], [ '\\[', '\\]' ], $text );
 	}
 }

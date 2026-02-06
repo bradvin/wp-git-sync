@@ -1,16 +1,36 @@
 <?php
+/**
+ * GitHub repo operations.
+ *
+ * @package WPGitSync
+ */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * High-level GitHub repo operations.
+ * High-level GitHub operations (branch + commit creation).
+ *
+ * Side effects:
+ * - Calls GitHub REST API.
  */
 final class WPGS_GitHub_Provider {
+	/**
+	 * API client.
+	 */
 	private WPGS_GitHub_Client $client;
-	private string $repo; // owner/repo
 
+	/**
+	 * Repo identifier in the form "owner/repo".
+	 */
+	private string $repo;
+
+	/**
+	 * @param WPGS_GitHub_Client $client HTTP client.
+	 * @param string            $repo Repo in the form owner/repo.
+	 * @throws InvalidArgumentException If repo is invalid.
+	 */
 	public function __construct( WPGS_GitHub_Client $client, string $repo ) {
 		$this->client = $client;
 		$this->repo   = trim( $repo );
@@ -20,7 +40,13 @@ final class WPGS_GitHub_Provider {
 	}
 
 	/**
-	 * Ensure branch exists. If missing, create it from repo default branch.
+	 * Ensure a branch exists.
+	 *
+	 * Side effects:
+	 * - May create the branch from the default branch.
+	 *
+	 * @param string $branch Branch name.
+	 * @return void
 	 */
 	public function ensure_branch( string $branch ): void {
 		$branch = trim( $branch );
@@ -32,12 +58,12 @@ final class WPGS_GitHub_Provider {
 			$this->get_ref_sha( $branch );
 			return;
 		} catch ( Throwable $e ) {
-			// Create it.
+			// Branch missing; create it below.
 		}
 
-		$repo_info     = $this->client->request( 'GET', $this->api( '' ) );
-		$default       = isset( $repo_info['default_branch'] ) ? (string) $repo_info['default_branch'] : 'main';
-		$default_head  = $this->get_ref_sha( $default );
+		$repo_info    = $this->client->request( 'GET', $this->api( '' ) );
+		$default      = isset( $repo_info['default_branch'] ) ? (string) $repo_info['default_branch'] : 'main';
+		$default_head = $this->get_ref_sha( $default );
 
 		$this->client->request( 'POST', $this->api( '/git/refs' ), [
 			'ref' => 'refs/heads/' . $branch,
@@ -45,6 +71,12 @@ final class WPGS_GitHub_Provider {
 		] );
 	}
 
+	/**
+	 * Get the current commit SHA for a branch.
+	 *
+	 * @param string $branch Branch name.
+	 * @return string Commit SHA.
+	 */
 	public function get_ref_sha( string $branch ): string {
 		$data = $this->client->request( 'GET', $this->api( '/git/refs/heads/' . rawurlencode( $branch ) ) );
 		$sha  = isset( $data['object']['sha'] ) ? (string) $data['object']['sha'] : '';
@@ -54,6 +86,12 @@ final class WPGS_GitHub_Provider {
 		return $sha;
 	}
 
+	/**
+	 * Get the tree SHA for a commit.
+	 *
+	 * @param string $commit_sha Commit SHA.
+	 * @return string Tree SHA.
+	 */
 	public function get_commit_tree_sha( string $commit_sha ): string {
 		$data = $this->client->request( 'GET', $this->api( '/git/commits/' . rawurlencode( $commit_sha ) ) );
 		$sha  = isset( $data['tree']['sha'] ) ? (string) $data['tree']['sha'] : '';
@@ -63,6 +101,12 @@ final class WPGS_GitHub_Provider {
 		return $sha;
 	}
 
+	/**
+	 * Create a blob.
+	 *
+	 * @param string $content File content (utf-8).
+	 * @return string Blob SHA.
+	 */
 	public function create_blob( string $content ): string {
 		$data = $this->client->request( 'POST', $this->api( '/git/blobs' ), [
 			'content'  => $content,
@@ -76,7 +120,11 @@ final class WPGS_GitHub_Provider {
 	}
 
 	/**
-	 * @param array<int,array{path:string,mode:string,type:string,sha:string}> $tree
+	 * Create a tree.
+	 *
+	 * @param string $base_tree_sha Base tree SHA.
+	 * @param array<int,array{path:string,mode:string,type:string,sha:string}> $tree Tree items.
+	 * @return string Tree SHA.
 	 */
 	public function create_tree( string $base_tree_sha, array $tree ): string {
 		$data = $this->client->request( 'POST', $this->api( '/git/trees' ), [
@@ -90,6 +138,14 @@ final class WPGS_GitHub_Provider {
 		return $sha;
 	}
 
+	/**
+	 * Create a commit.
+	 *
+	 * @param string $message Commit message.
+	 * @param string $tree_sha Tree SHA.
+	 * @param string $parent_commit_sha Parent commit SHA.
+	 * @return string Commit SHA.
+	 */
 	public function create_commit( string $message, string $tree_sha, string $parent_commit_sha ): string {
 		$data = $this->client->request( 'POST', $this->api( '/git/commits' ), [
 			'message' => $message,
@@ -103,6 +159,13 @@ final class WPGS_GitHub_Provider {
 		return $sha;
 	}
 
+	/**
+	 * Update a branch ref to point at a commit.
+	 *
+	 * @param string $branch Branch name.
+	 * @param string $commit_sha Commit SHA.
+	 * @return void
+	 */
 	public function update_ref( string $branch, string $commit_sha ): void {
 		$this->client->request( 'PATCH', $this->api( '/git/refs/heads/' . rawurlencode( $branch ) ), [
 			'sha'   => $commit_sha,
@@ -111,9 +174,17 @@ final class WPGS_GitHub_Provider {
 	}
 
 	/**
-	 * Commit/update files (path => content) on a branch.
+	 * Commit/update multiple files (path => content) on a branch.
 	 *
-	 * @param array<string,string> $files
+	 * Implementation uses Git Data API:
+	 * - create blobs
+	 * - create tree
+	 * - create commit
+	 * - update ref
+	 *
+	 * @param string              $branch Branch name.
+	 * @param string              $message Commit message.
+	 * @param array<string,string> $files Files to write.
 	 * @return array{commit_sha:string}
 	 */
 	public function commit_files( string $branch, string $message, array $files ): array {
@@ -140,6 +211,12 @@ final class WPGS_GitHub_Provider {
 		return [ 'commit_sha' => $new_commit ];
 	}
 
+	/**
+	 * Build an API URL for this repo.
+	 *
+	 * @param string $path Path under the repo API.
+	 * @return string
+	 */
 	private function api( string $path ): string {
 		$path = ltrim( $path, '/' );
 		$base = 'https://api.github.com/repos/' . $this->repo;
