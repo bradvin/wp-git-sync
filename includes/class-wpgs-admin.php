@@ -247,7 +247,8 @@ final class WPGS_Admin {
 	 * @return void
 	 */
 	public static function handle_export_post(): void {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		// Export is an admin-only operation.
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Insufficient permissions.' );
 		}
 
@@ -415,12 +416,16 @@ final class WPGS_Admin {
 			<p><strong>Last error:</strong><br /><code style="white-space:pre-wrap;display:block;"><?php echo esc_html( $state['last_error'] ); ?></code></p>
 		<?php endif; ?>
 
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="wpgs_export_post" />
-			<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
-			<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post->ID ) ); ?>" />
-			<?php submit_button( 'Sync this post now', 'secondary', 'submit', false ); ?>
-		</form>
+		<?php if ( ! current_user_can( 'manage_options' ) ) : ?>
+			<p class="description">Only administrators can export/sync content.</p>
+		<?php else : ?>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="wpgs_export_post" />
+				<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
+				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post->ID ) ); ?>" />
+				<?php submit_button( 'Sync this post now', 'secondary', 'submit', false ); ?>
+			</form>
+		<?php endif; ?>
 		<?php
 	}
 }
