@@ -2,15 +2,15 @@
 
 WP Git Sync is a WordPress plugin that syncs WordPress post content + meta into a GitHub repository branch using deterministic file paths.
 
-> Status: early scaffold. The repo currently contains a **temporary shell git adapter**; Brad has approved a pivot to **GitHub API-only** (no `proc_open`, no `git` CLI) using **Device Flow OAuth** and/or a **fine-grained PAT**.
+> Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and supports **Device Flow OAuth** and **fine-grained PATs**.
 
-## What it does today
+## What it does
 
-- Configures a repo remote URL + branch (default: `wp-content-sync`)
+- Configures a GitHub repo (`owner` + `repo`) + branch (default: `wp-content-sync`)
 - Exports posts/pages to deterministic files
-- Maintains a mapping file at `wp-git-sync/mapping.json`
-- Generates/updates a deterministic repo-root `README.md` index
-- Commits + pushes changes to the configured branch
+- Maintains a mapping file at `wp-git-sync/mapping.json` in the repo
+- Generates/updates a deterministic repo-root `README.md` index in the repo
+- Writes changes via the GitHub **Git Data API** in a single commit per export
 - Adds a per-post metabox with sync status + “Sync this post now”
 
 ## Deterministic file layout (final)
@@ -32,41 +32,44 @@ Format:
 - Section per type (Pages, Posts, Other)
 - Bullet: `[Title](permalink) — [file](relative/path.md)`
 
-## Auth (planned / approved direction)
+## Auth
 
-### Option A: GitHub OAuth Device Flow (recommended UX)
-Planned settings fields:
-- `auth_mode=device_oauth`
-- Store `device_token`, optional `device_refresh_token`, `token_expires_at`, `refresh_expires_at`
-- Buttons: **Connect GitHub** (device flow) and **Disconnect**
+### Device Flow OAuth
+
+- Define your GitHub OAuth App client id in `wp-config.php`:
+
+```php
+define( 'WPGS_GITHUB_CLIENT_ID', 'Iv1.1234567890abcdef' );
+```
+
+- In **Settings → WP Git Sync** select **Device Flow OAuth** and click **Connect GitHub**.
+- The settings page will show a user code + verification URL.
+- After authorizing, click **Complete connection (poll)**.
 
 Scopes:
 - Public repos: `public_repo`
 - Private repos: `repo`
 
-### Option C: Fine-grained PAT
-Planned settings fields:
-- `auth_mode=pat`
-- `pat_storage=options|wp_config`
+### Fine-grained PAT
 
-Preferred storage (wp-config):
+Modes:
+- `pat_storage=wp_config` (preferred)
+- `pat_storage=options`
+
+wp-config.php mode:
 
 ```php
-define( 'WPGS_GITHUB_PAT', 'ghp_...' );
+define( 'WPGS_GITHUB_PAT', 'github_pat_...' );
 ```
 
-Repo permissions required:
+Required permissions for the selected repo:
 - Contents: Read and write
 - Metadata: Read-only
 
 ## Assumptions / requirements
 
-Current scaffold (temporary):
-- The WordPress server can run `git` via `proc_open()`.
-- The server can authenticate to your Git remote via SSH or HTTPS.
-
-Approved target architecture:
-- WordPress server can make outbound HTTPS requests to `api.github.com`.
+- WordPress server can make outbound HTTPS requests to `api.github.com` and `github.com`.
+- The configured token has permission to read/write repo contents.
 - No shell execution required.
 
 ## Setup (current scaffold)

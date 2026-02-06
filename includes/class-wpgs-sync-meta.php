@@ -20,6 +20,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - Do not store tokens here.
  */
 final class WPGS_Sync_Meta {
+	/**
+	 * Synced repo in the form owner/repo.
+	 */
 	public const KEY_REPO           = '_wpgs_repo';
 	public const KEY_BRANCH         = '_wpgs_branch';
 	public const KEY_CONTENT_PATH   = '_wpgs_path_content';

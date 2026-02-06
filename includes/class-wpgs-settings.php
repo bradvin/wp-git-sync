@@ -2,10 +2,6 @@
 /**
  * Settings storage and sanitization.
  *
- * NOTE: This file currently reflects the "git shell" scaffold.
- * Brad's direction is to pivot to GitHub API auth (Device Flow OAuth + PAT).
- * We keep README in sync with current behavior and document planned changes.
- *
  * @package WPGitSync
  */
 
@@ -14,11 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Manages plugin settings in wp_options.
+ * Manages WP Git Sync settings in wp_options.
  *
  * Security notes:
- * - Tokens stored in wp_options can be read by admins with DB access.
- * - Prefer wp-config constants / environment variables for production.
+ * - Access tokens stored in wp_options can be read by anyone with DB access.
+ * - Prefer wp-config constants for PAT where possible.
  */
 final class WPGS_Settings {
 	/**
@@ -62,12 +58,25 @@ final class WPGS_Settings {
 	 */
 	public static function defaults(): array {
 		return [
-			'repo_url'         => '',
-			'branch'           => 'wp-content-sync',
-			'auth_method'      => 'ssh', // ssh|https
-			'ssh_key_path'     => '',
-			'https_token'      => '',
-			'local_clone_path' => WP_CONTENT_DIR . '/wpgs-repo',
+			'auth_mode' => 'pat', // device_oauth|pat
+			'pat_storage' => 'wp_config', // options|wp_config
+			'pat_token' => '', // only used when pat_storage=options
+
+			// Device OAuth token storage.
+			'device_token' => '',
+			'device_refresh_token' => '',
+			'token_expires_at' => '',
+			'refresh_expires_at' => '',
+			'device_code' => '',
+			'user_code' => '',
+			'verification_uri' => '',
+			'verification_uri_complete' => '',
+			'device_code_expires_at' => '',
+			'device_poll_interval' => 5,
+
+			'github_owner' => '',
+			'github_repo' => '',
+			'branch' => 'wp-content-sync',
 		];
 	}
 
@@ -87,39 +96,92 @@ final class WPGS_Settings {
 	/**
 	 * Sanitize settings input.
 	 *
+	 * Migration notes:
+	 * - If old keys `repo_url` contain a GitHub URL/SSH remote, we attempt to
+	 *   parse and migrate into github_owner/github_repo.
+	 * - Old keys related to local clones are dropped; the plugin is now API-only.
+	 *
 	 * Security notes:
-	 * - The HTTPS token is only updated when a non-empty value is provided.
-	 * - This prevents accidentally wiping the token on every settings save.
+	 * - Tokens are only updated when a non-empty value is submitted.
 	 *
 	 * @param mixed $raw Raw option value from the settings form.
-	 * @return array<string,mixed> Sanitized settings.
+	 * @return array<string,mixed>
 	 */
 	public static function sanitize( $raw ): array {
 		$raw = is_array( $raw ) ? $raw : [];
+		$prev = get_option( self::OPTION_KEY, [] );
+		$prev = is_array( $prev ) ? $prev : [];
 
 		$out = self::defaults();
 
-		$out['repo_url']     = isset( $raw['repo_url'] ) ? esc_url_raw( (string) $raw['repo_url'] ) : '';
-		$out['branch']       = isset( $raw['branch'] ) ? sanitize_text_field( (string) $raw['branch'] ) : $out['branch'];
-		$out['auth_method']  = isset( $raw['auth_method'] ) ? sanitize_key( (string) $raw['auth_method'] ) : $out['auth_method'];
-		$out['ssh_key_path'] = isset( $raw['ssh_key_path'] ) ? sanitize_text_field( (string) $raw['ssh_key_path'] ) : '';
+		$out['auth_mode']   = isset( $raw['auth_mode'] ) ? sanitize_key( (string) $raw['auth_mode'] ) : (string) ( $prev['auth_mode'] ?? $out['auth_mode'] );
+		$out['pat_storage'] = isset( $raw['pat_storage'] ) ? sanitize_key( (string) $raw['pat_storage'] ) : (string) ( $prev['pat_storage'] ?? $out['pat_storage'] );
 
-		// Token: only update if user explicitly re-enters a non-empty value.
-		if ( isset( $raw['https_token'] ) && '' !== trim( (string) $raw['https_token'] ) ) {
-			$out['https_token'] = sanitize_text_field( (string) $raw['https_token'] );
+		$out['github_owner'] = isset( $raw['github_owner'] ) ? sanitize_text_field( (string) $raw['github_owner'] ) : (string) ( $prev['github_owner'] ?? '' );
+		$out['github_repo']  = isset( $raw['github_repo'] ) ? sanitize_text_field( (string) $raw['github_repo'] ) : (string) ( $prev['github_repo'] ?? '' );
+		$out['branch']       = isset( $raw['branch'] ) ? sanitize_text_field( (string) $raw['branch'] ) : (string) ( $prev['branch'] ?? $out['branch'] );
+
+		// PAT token only updates if user re-enters it.
+		if ( isset( $raw['pat_token'] ) && '' !== trim( (string) $raw['pat_token'] ) ) {
+			$out['pat_token'] = sanitize_text_field( (string) $raw['pat_token'] );
 		} else {
-			$prev               = get_option( self::OPTION_KEY, [] );
-			$out['https_token'] = is_array( $prev ) && isset( $prev['https_token'] ) ? sanitize_text_field( (string) $prev['https_token'] ) : '';
+			$out['pat_token'] = isset( $prev['pat_token'] ) ? sanitize_text_field( (string) $prev['pat_token'] ) : '';
 		}
 
-		$out['local_clone_path'] = isset( $raw['local_clone_path'] )
-			? untrailingslashit( sanitize_text_field( (string) $raw['local_clone_path'] ) )
-			: $out['local_clone_path'];
+		// Device OAuth tokens: only update if user re-enters (normally set via connect flow).
+		foreach ( [
+			'device_token',
+			'device_refresh_token',
+			'token_expires_at',
+			'refresh_expires_at',
+			'device_code',
+			'user_code',
+			'verification_uri',
+			'verification_uri_complete',
+			'device_code_expires_at',
+		] as $k ) {
+			if ( isset( $raw[ $k ] ) && '' !== trim( (string) $raw[ $k ] ) ) {
+				$out[ $k ] = sanitize_text_field( (string) $raw[ $k ] );
+			} else {
+				$out[ $k ] = isset( $prev[ $k ] ) ? sanitize_text_field( (string) $prev[ $k ] ) : $out[ $k ];
+			}
+		}
 
-		if ( ! in_array( $out['auth_method'], [ 'ssh', 'https' ], true ) ) {
-			$out['auth_method'] = 'ssh';
+		$out['device_poll_interval'] = isset( $raw['device_poll_interval'] ) ? (int) $raw['device_poll_interval'] : (int) ( $prev['device_poll_interval'] ?? $out['device_poll_interval'] );
+
+		if ( ! in_array( $out['auth_mode'], [ 'device_oauth', 'pat' ], true ) ) {
+			$out['auth_mode'] = 'pat';
+		}
+		if ( ! in_array( $out['pat_storage'], [ 'options', 'wp_config' ], true ) ) {
+			$out['pat_storage'] = 'wp_config';
+		}
+
+		// One-time best-effort migration from old repo_url.
+		if ( '' === $out['github_owner'] && '' === $out['github_repo'] && isset( $raw['repo_url'] ) ) {
+			[ $owner, $repo ] = self::parse_github_owner_repo( (string) $raw['repo_url'] );
+			if ( $owner && $repo ) {
+				$out['github_owner'] = $owner;
+				$out['github_repo']  = $repo;
+			}
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Parse owner/repo from a GitHub URL or SSH remote.
+	 *
+	 * @param string $repo_url Repo URL.
+	 * @return array{0:string,1:string} owner, repo
+	 */
+	public static function parse_github_owner_repo( string $repo_url ): array {
+		$repo_url = trim( $repo_url );
+		if ( preg_match( '#^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$#i', $repo_url, $m ) ) {
+			return [ (string) $m[1], (string) $m[2] ];
+		}
+		if ( preg_match( '#^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$#i', $repo_url, $m ) ) {
+			return [ (string) $m[1], (string) $m[2] ];
+		}
+		return [ '', '' ];
 	}
 }

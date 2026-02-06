@@ -17,6 +17,31 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class WPGS_GitHub_Provider {
 	/**
+	 * Fetch a file's raw contents from a branch using the Contents API.
+	 *
+	 * Side effects:
+	 * - Calls GitHub REST API.
+	 *
+	 * @param string $branch Branch.
+	 * @param string $path Repo-relative file path.
+	 * @return string Raw file contents.
+	 * @throws RuntimeException When the file cannot be fetched/decoded.
+	 */
+	public function get_file_contents( string $branch, string $path ): string {
+		$path = ltrim( $path, '/' );
+		$data = $this->client->request( 'GET', $this->api( '/contents/' . str_replace( '%2F', '/', rawurlencode( $path ) ) . '?ref=' . rawurlencode( $branch ) ) );
+		$content = isset( $data['content'] ) ? (string) $data['content'] : '';
+		$encoding = isset( $data['encoding'] ) ? (string) $data['encoding'] : '';
+		if ( 'base64' !== $encoding || '' === $content ) {
+			throw new RuntimeException( 'Unable to decode file from GitHub.' );
+		}
+		$decoded = base64_decode( str_replace( "\n", '', $content ), true );
+		if ( false === $decoded ) {
+			throw new RuntimeException( 'Base64 decode failed.' );
+		}
+		return (string) $decoded;
+	}
+	/**
 	 * API client.
 	 */
 	private WPGS_GitHub_Client $client;
@@ -123,10 +148,11 @@ final class WPGS_GitHub_Provider {
 	 * Create a tree.
 	 *
 	 * @param string $base_tree_sha Base tree SHA.
-	 * @param array<int,array{path:string,mode:string,type:string,sha:string}> $tree Tree items.
+	 * @param array<int,array{path:string,mode:string,type:string,sha:string|null}> $tree Tree items.
 	 * @return string Tree SHA.
 	 */
 	public function create_tree( string $base_tree_sha, array $tree ): string {
+		// GitHub accepts sha=null for deletions.
 		$data = $this->client->request( 'POST', $this->api( '/git/trees' ), [
 			'base_tree' => $base_tree_sha,
 			'tree'      => $tree,
@@ -182,12 +208,27 @@ final class WPGS_GitHub_Provider {
 	 * - create commit
 	 * - update ref
 	 *
-	 * @param string              $branch Branch name.
-	 * @param string              $message Commit message.
+	 * @param string               $branch Branch name.
+	 * @param string               $message Commit message.
 	 * @param array<string,string> $files Files to write.
 	 * @return array{commit_sha:string}
 	 */
 	public function commit_files( string $branch, string $message, array $files ): array {
+		return $this->commit_files_with_deletes( $branch, $message, $files, [] );
+	}
+
+	/**
+	 * Commit/update files and delete stale paths in a single commit.
+	 *
+	 * Deletions are represented in the Git tree as entries with sha=null.
+	 *
+	 * @param string               $branch Branch name.
+	 * @param string               $message Commit message.
+	 * @param array<string,string> $files Files to write.
+	 * @param string[]             $delete_paths Repo-relative paths to delete.
+	 * @return array{commit_sha:string}
+	 */
+	public function commit_files_with_deletes( string $branch, string $message, array $files, array $delete_paths ): array {
 		$this->ensure_branch( $branch );
 
 		$parent_commit = $this->get_ref_sha( $branch );
@@ -201,6 +242,19 @@ final class WPGS_GitHub_Provider {
 				'mode' => '100644',
 				'type' => 'blob',
 				'sha'  => $blob_sha,
+			];
+		}
+
+		foreach ( $delete_paths as $path ) {
+			$path = ltrim( (string) $path, '/' );
+			if ( '' === $path ) {
+				continue;
+			}
+			$tree_items[] = [
+				'path' => $path,
+				'mode' => '100644',
+				'type' => 'blob',
+				'sha'  => null,
 			];
 		}
 
