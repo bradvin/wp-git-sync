@@ -316,7 +316,12 @@ final class WPGS_GitHub_Provider {
 
 			$tree_items = $this->build_tree_items_for_files( $files );
 
-			if ( ! $is_initial_commit ) {
+			$can_apply_deletes = ! $is_initial_commit
+				&& is_string( $base_tree )
+				&& '' !== trim( $base_tree )
+				&& self::EMPTY_TREE_SHA !== trim( $base_tree );
+
+			if ( $can_apply_deletes ) {
 				foreach ( $delete_paths as $path ) {
 					$path = ltrim( (string) $path, '/' );
 					if ( '' === $path ) {
