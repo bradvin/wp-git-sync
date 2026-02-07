@@ -1756,13 +1756,33 @@ final class WPGS_Admin {
 		$post_card_title = ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) && '' !== (string) $post_type_obj->labels->singular_name )
 			? (string) $post_type_obj->labels->singular_name
 			: ucfirst( (string) $post->post_type );
-		$repo_file_url   = '';
+		$content_file_url = '';
+		$post_file_url    = '';
+		$meta_file_url    = '';
 		if ( $diff ) {
-			$repo_file_url = self::github_file_url_from_state(
+			$link_state = [
+				'repo'   => (string) ( $diff['repo'] ?? '' ),
+				'branch' => (string) ( $diff['branch'] ?? '' ),
+			];
+			$content_file_url = self::github_file_url_from_state(
 				[
-					'repo'         => (string) ( $diff['repo'] ?? '' ),
-					'branch'       => (string) ( $diff['branch'] ?? '' ),
-					'content_path' => (string) ( $diff['content_path'] ?? '' ),
+					'repo'   => $link_state['repo'],
+					'branch' => $link_state['branch'],
+					'path'   => (string) ( $diff['content_path'] ?? '' ),
+				]
+			);
+			$post_file_url = self::github_file_url_from_state(
+				[
+					'repo'   => $link_state['repo'],
+					'branch' => $link_state['branch'],
+					'path'   => (string) ( $diff['post_path'] ?? '' ),
+				]
+			);
+			$meta_file_url = self::github_file_url_from_state(
+				[
+					'repo'   => $link_state['repo'],
+					'branch' => $link_state['branch'],
+					'path'   => (string) ( $diff['meta_path'] ?? '' ),
 				]
 			);
 		}
@@ -1772,12 +1792,54 @@ final class WPGS_Admin {
 			<h1>WP Git Sync</h1>
 			<?php self::render_primary_tabs( 'diff', (int) $post_id ); ?>
 			<div class="wpgs-overview-grid">
-				<article class="wpgs-card">
+				<article class="wpgs-card wpgs-post-card">
 					<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
 					<p class="wpgs-kv">
 						<strong>Title:</strong> <?php echo esc_html( (string) $post->post_title ); ?><br />
 						<strong>ID:</strong> <code><?php echo (int) $post_id; ?></code>
 					</p>
+					<?php if ( $diff ) : ?>
+						<dl class="wpgs-detail-grid wpgs-post-sync-grid">
+							<div class="wpgs-detail-row">
+								<dt>Repo</dt>
+								<dd><code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code></dd>
+							</div>
+							<div class="wpgs-detail-row">
+								<dt>Branch</dt>
+								<dd><code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code></dd>
+							</div>
+							<div class="wpgs-detail-row">
+								<dt>Content path</dt>
+								<dd>
+									<?php if ( '' !== $content_file_url ) : ?>
+										<a href="<?php echo esc_url( $content_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code></a>
+									<?php else : ?>
+										<code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code>
+									<?php endif; ?>
+								</dd>
+							</div>
+							<div class="wpgs-detail-row">
+								<dt>Post path</dt>
+								<dd>
+									<?php if ( '' !== $post_file_url ) : ?>
+										<a href="<?php echo esc_url( $post_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code></a>
+									<?php else : ?>
+										<code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code>
+									<?php endif; ?>
+								</dd>
+							</div>
+							<div class="wpgs-detail-row">
+								<dt>Meta path</dt>
+								<dd>
+									<?php if ( '' !== $meta_file_url ) : ?>
+										<a href="<?php echo esc_url( $meta_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code></a>
+									<?php else : ?>
+										<code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code>
+									<?php endif; ?>
+								</dd>
+							</div>
+						</dl>
+					<?php endif; ?>
 					<div class="wpgs-action-row wpgs-post-action-row">
 						<?php if ( $edit_link ) : ?>
 							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
@@ -1823,32 +1885,6 @@ final class WPGS_Admin {
 							<div class="wpgs-detail-row">
 								<dt>Checked at</dt>
 								<dd><?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Repo</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Branch</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Content path</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Post path</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code></dd>
-							</div>
-							<?php if ( '' !== $repo_file_url ) : ?>
-								<div class="wpgs-detail-row">
-									<dt>Repo file</dt>
-									<dd><a href="<?php echo esc_url( $repo_file_url ); ?>" target="_blank" rel="noopener noreferrer">Open on GitHub</a></dd>
-								</div>
-							<?php endif; ?>
-							<div class="wpgs-detail-row">
-								<dt>Meta path</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code></dd>
 							</div>
 							<div class="wpgs-detail-row">
 								<dt>Content changed</dt>
@@ -1913,6 +1949,9 @@ final class WPGS_Admin {
 					border-radius: 8px;
 					padding: 14px 16px;
 					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+				}
+				.wpgs-post-card {
+					padding-top: 20px;
 				}
 				.wpgs-card-title {
 					margin: 0 0 10px;
@@ -2195,13 +2234,20 @@ final class WPGS_Admin {
 	/**
 	 * Build a GitHub file URL from sync state.
 	 *
-	 * @param array<string,string> $state Sync state.
+	 * @param array<string,mixed> $state Sync state.
 	 * @return string GitHub URL or empty string when not buildable.
 	 */
 	private static function github_file_url_from_state( array $state ): string {
 		$repo    = trim( (string) ( $state['repo'] ?? '' ) );
 		$branch  = trim( (string) ( $state['branch'] ?? '' ) );
-		$path    = ltrim( (string) ( $state['content_path'] ?? '' ), '/' );
+		$path    = '';
+		foreach ( [ 'path', 'content_path', 'post_path', 'meta_path' ] as $key ) {
+			$candidate = ltrim( (string) ( $state[ $key ] ?? '' ), '/' );
+			if ( '' !== $candidate ) {
+				$path = $candidate;
+				break;
+			}
+		}
 
 		if ( '' === $repo || '' === $branch || '' === $path || false === strpos( $repo, '/' ) ) {
 			return '';
