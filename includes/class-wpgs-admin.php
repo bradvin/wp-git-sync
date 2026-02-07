@@ -1969,7 +1969,7 @@ final class WPGS_Admin {
 					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 				}
 				.wpgs-post-card {
-					padding-top: 20px;
+					margin-top: 12px;
 				}
 				.wpgs-card-title {
 					margin: 0 0 10px;
