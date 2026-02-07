@@ -1880,25 +1880,17 @@ final class WPGS_Admin {
 				</article>
 			</div>
 
-			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
-				<a id="wpgs-tab-check-link" href="#wpgs-tab-check" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-check" aria-controls="wpgs-tab-check" aria-selected="true">Check</a>
-				<?php if ( $has_diff ) : ?>
+			<?php if ( $has_diff ) : ?>
+				<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
+					<a id="wpgs-tab-check-link" href="#wpgs-tab-check" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-check" aria-controls="wpgs-tab-check" aria-selected="true">Check</a>
 					<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
 					<a id="wpgs-tab-post-link" href="#wpgs-tab-post" class="nav-tab" role="tab" data-tab="wpgs-tab-post" aria-controls="wpgs-tab-post" aria-selected="false">Post <span class="wpgs-tab-light <?php echo esc_attr( $post_status_class ); ?>" aria-hidden="true"></span></a>
 					<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
-				<?php endif; ?>
-			</nav>
+				</nav>
 
-			<section id="wpgs-tab-check" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-check-link">
-				<article class="wpgs-card">
-					<h2 class="wpgs-card-title">Latest check</h2>
-					<?php if ( ! $diff ) : ?>
-						<?php if ( $has_sync_state ) : ?>
-							<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
-						<?php else : ?>
-							<p class="description">No sync metadata found yet. Export this post first to enable checks.</p>
-						<?php endif; ?>
-					<?php else : ?>
+				<section id="wpgs-tab-check" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-check-link">
+					<article class="wpgs-card">
+						<h2 class="wpgs-card-title">Latest check</h2>
 						<dl class="wpgs-detail-grid">
 							<div class="wpgs-detail-row">
 								<dt>Checked at</dt>
@@ -1917,11 +1909,9 @@ final class WPGS_Admin {
 								<dd><?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?></dd>
 							</div>
 						</dl>
-					<?php endif; ?>
-				</article>
-			</section>
+					</article>
+				</section>
 
-			<?php if ( $has_diff ) : ?>
 				<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
 					<?php if ( ! $content_changed ) : ?>
 						<div class="wpgs-empty-panel">(no changes)</div>
@@ -1954,6 +1944,15 @@ final class WPGS_Admin {
 						</div>
 					<?php endif; ?>
 				</section>
+			<?php else : ?>
+				<article class="wpgs-card wpgs-check-state-card">
+					<h2 class="wpgs-card-title">Check</h2>
+					<?php if ( $has_sync_state ) : ?>
+						<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
+					<?php else : ?>
+						<p class="description">No sync metadata found yet. Export this post first to enable checks.</p>
+					<?php endif; ?>
+				</article>
 			<?php endif; ?>
 			<style>
 				.wpgs-overview-grid {
@@ -2019,6 +2018,9 @@ final class WPGS_Admin {
 					margin-top: 12px;
 				}
 				.wpgs-tab-panel {
+					margin-top: 16px;
+				}
+				.wpgs-check-state-card {
 					margin-top: 16px;
 				}
 				.wpgs-tab-panel[hidden] {
