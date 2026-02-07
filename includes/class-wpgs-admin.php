@@ -1802,12 +1802,16 @@ final class WPGS_Admin {
 			<div class="wpgs-overview-grid">
 				<article class="wpgs-card wpgs-post-card">
 					<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
-					<p class="wpgs-kv">
-						<strong>Title:</strong> <?php echo esc_html( (string) $post->post_title ); ?><br />
-						<strong>ID:</strong> <code><?php echo (int) $post_id; ?></code>
-					</p>
-					<?php if ( $has_sync_state ) : ?>
-						<dl class="wpgs-detail-grid wpgs-post-sync-grid">
+					<dl class="wpgs-detail-grid wpgs-post-sync-grid">
+						<div class="wpgs-detail-row">
+							<dt>Title</dt>
+							<dd><?php echo esc_html( (string) $post->post_title ); ?></dd>
+						</div>
+						<div class="wpgs-detail-row">
+							<dt>ID</dt>
+							<dd><code><?php echo (int) $post_id; ?></code></dd>
+						</div>
+						<?php if ( $has_sync_state ) : ?>
 							<div class="wpgs-detail-row">
 								<dt>Repo</dt>
 								<dd><code><?php echo esc_html( (string) ( $sync_state['repo'] ?? '' ) ); ?></code></dd>
@@ -1846,8 +1850,8 @@ final class WPGS_Admin {
 									<?php endif; ?>
 								</dd>
 							</div>
-						</dl>
-					<?php endif; ?>
+						<?php endif; ?>
+					</dl>
 					<div class="wpgs-action-row wpgs-post-action-row">
 						<?php if ( $edit_link ) : ?>
 							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
@@ -1972,10 +1976,6 @@ final class WPGS_Admin {
 					font-size: 16px;
 					line-height: 1.4;
 				}
-					.wpgs-kv {
-						margin: 0;
-						line-height: 1.7;
-					}
 					.wpgs-detail-grid {
 						margin: 0;
 						display: grid;
