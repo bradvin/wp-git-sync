@@ -37,6 +37,7 @@ final class WPGS_Admin {
 		add_action( 'wp_ajax_wpgs_export_batch_start', [ __CLASS__, 'ajax_export_batch_start' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_status', [ __CLASS__, 'ajax_export_batch_status' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_step', [ __CLASS__, 'ajax_export_batch_step' ] );
+		add_action( 'wp_ajax_wpgs_export_batch_stop', [ __CLASS__, 'ajax_export_batch_stop' ] );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notices' ] );
 	}
@@ -530,8 +531,10 @@ final class WPGS_Admin {
 							<span id="wpgs-export-progress-fill"></span>
 						</div>
 						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
-						<p id="wpgs-export-resume-wrap" hidden>
-							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn">Resume Export</button>
+						<p id="wpgs-export-controls" class="wpgs-export-controls" hidden>
+							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden>Resume Export</button>
+							<button type="button" class="button button-secondary" id="wpgs-export-pause-btn" hidden>Pause Export</button>
+							<button type="button" class="button button-link-delete" id="wpgs-export-stop-btn" hidden>Stop Export</button>
 						</p>
 					</div>
 
@@ -680,6 +683,12 @@ final class WPGS_Admin {
 				.wpgs-export-progress {
 					margin-top: 12px;
 				}
+				.wpgs-export-controls {
+					display: flex;
+					gap: 8px;
+					align-items: center;
+					margin: 8px 0 0;
+				}
 				.wpgs-export-progress-bar {
 					width: 100%;
 					max-width: 540px;
@@ -708,8 +717,10 @@ final class WPGS_Admin {
 						var progressWrap = document.getElementById('wpgs-export-progress');
 						var progressFill = document.getElementById('wpgs-export-progress-fill');
 						var progressText = document.getElementById('wpgs-export-progress-text');
-						var resumeWrap = document.getElementById('wpgs-export-resume-wrap');
+						var controlsWrap = document.getElementById('wpgs-export-controls');
 						var resumeBtn = document.getElementById('wpgs-export-resume-btn');
+						var pauseBtn = document.getElementById('wpgs-export-pause-btn');
+						var stopBtn = document.getElementById('wpgs-export-stop-btn');
 						var typeTabsNav = document.getElementById('wpgs-type-tabs-nav');
 						var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
 						var typePanels = document.querySelectorAll('.wpgs-type-panel');
@@ -717,8 +728,12 @@ final class WPGS_Admin {
 						var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
 						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
 						var isRunning = false;
+						var isPaused = false;
+						var isStopping = false;
+						var stopRequested = false;
 						var currentScopeLabel = 'All post types';
 						var pendingResumeData = null;
+						var latestProgressData = null;
 
 						function toBody(action, postType) {
 							var body = new URLSearchParams();
@@ -750,10 +765,28 @@ final class WPGS_Admin {
 							}
 						}
 
+						function refreshControlButtons() {
+							if (!controlsWrap) {
+								return;
+							}
+							var showControls = isRunning || isPaused || !!pendingResumeData;
+							controlsWrap.hidden = !showControls;
+							if (resumeBtn) {
+								resumeBtn.hidden = !(isPaused || (!!pendingResumeData && !isRunning));
+							}
+							if (pauseBtn) {
+								pauseBtn.hidden = !isRunning;
+							}
+							if (stopBtn) {
+								stopBtn.hidden = !(isRunning || isPaused || !!pendingResumeData);
+							}
+						}
+
 						function renderProgress(data) {
 							if (data.scope_label) {
 								currentScopeLabel = data.scope_label;
 							}
+							latestProgressData = data;
 							var pct = typeof data.percent === 'number' ? data.percent : 0;
 							pct = Math.max(0, Math.min(100, pct));
 							progressFill.style.width = pct + '%';
@@ -772,52 +805,69 @@ final class WPGS_Admin {
 
 						function finishRun(data) {
 							isRunning = false;
+							isPaused = false;
 							pendingResumeData = null;
+							latestProgressData = data || latestProgressData;
 							setExportButtonsEnabled(true);
 							btn.textContent = 'Export All Posts';
-							if (resumeWrap) {
-								resumeWrap.hidden = true;
-							}
+							refreshControlButtons();
 							renderProgress(data);
 						}
 
 						function beginPollingWithCurrentState(data) {
+							stopRequested = false;
 							isRunning = true;
+							isPaused = false;
 							pendingResumeData = null;
 							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
 							progressWrap.hidden = false;
-							if (resumeWrap) {
-								resumeWrap.hidden = true;
-							}
+							refreshControlButtons();
 							renderProgress(data);
 							window.setTimeout(pollStep, 200);
 						}
 
 						function pollStep() {
+							if (!isRunning || isPaused) {
+								return;
+							}
 							request('wpgs_export_batch_step')
 								.then(function (res) {
 									if (!res.success) {
 										throw new Error((res.data && res.data.message) ? res.data.message : 'Batch step failed.');
 									}
+									if (stopRequested) {
+										return;
+									}
 									var data = res.data || {};
 									renderProgress(data);
-										if (data.done) {
-											finishRun(data);
-											return;
-										}
+									if (data.done) {
+										finishRun(data);
+										return;
+									}
+									if (isPaused || !isRunning) {
+										pendingResumeData = data;
+										refreshControlButtons();
+										return;
+									}
 										window.setTimeout(pollStep, 350);
 								})
 									.catch(function (err) {
+										if (stopRequested) {
+											return;
+										}
 										isRunning = false;
+										isPaused = false;
+										pendingResumeData = null;
 										setExportButtonsEnabled(true);
 										btn.textContent = 'Export All Posts';
+										refreshControlButtons();
 										progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
 									});
 						}
 
 						function startBatch(postType, scopeLabel) {
-							if (isRunning) {
+							if (isRunning || isPaused || isStopping) {
 								return;
 							}
 							progressWrap.hidden = false;
@@ -825,12 +875,13 @@ final class WPGS_Admin {
 							progressText.textContent = 'Starting export batch...';
 							currentScopeLabel = scopeLabel || 'All post types';
 							pendingResumeData = null;
-							if (resumeWrap) {
-								resumeWrap.hidden = true;
-							}
+							latestProgressData = null;
+							stopRequested = false;
 							isRunning = true;
+							isPaused = false;
 							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
+							refreshControlButtons();
 
 							request('wpgs_export_batch_start', postType)
 								.then(function (res) {
@@ -842,9 +893,57 @@ final class WPGS_Admin {
 								})
 								.catch(function (err) {
 									isRunning = false;
+									isPaused = false;
 									setExportButtonsEnabled(true);
 									btn.textContent = 'Export All Posts';
+									refreshControlButtons();
 									progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
+								});
+						}
+
+						function pauseBatch() {
+							if (!isRunning) {
+								return;
+							}
+							isPaused = true;
+							isRunning = false;
+							pendingResumeData = latestProgressData;
+							btn.textContent = 'Export Paused';
+							refreshControlButtons();
+							progressText.textContent = progressText.textContent.replace(/\s*Export paused\.$/, '') + ' Export paused.';
+						}
+
+						function stopBatch() {
+							if (isStopping) {
+								return;
+							}
+							isStopping = true;
+							stopRequested = true;
+							isRunning = false;
+							isPaused = false;
+							request('wpgs_export_batch_stop')
+								.then(function (res) {
+									if (!res.success) {
+										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to stop export.');
+									}
+									var data = res.data || {};
+									pendingResumeData = null;
+									latestProgressData = null;
+									btn.textContent = 'Export All Posts';
+									setExportButtonsEnabled(true);
+									refreshControlButtons();
+									progressWrap.hidden = false;
+									progressFill.style.width = '0%';
+									progressText.textContent = (data.last_step && data.last_step.message)
+										? data.last_step.message
+										: 'Export stopped.';
+								})
+								.catch(function (err) {
+									setExportButtonsEnabled(false);
+									progressText.textContent = 'Unable to stop export: ' + (err && err.message ? err.message : 'Unknown error');
+								})
+								.finally(function () {
+									isStopping = false;
 								});
 						}
 
@@ -894,6 +993,12 @@ final class WPGS_Admin {
 								beginPollingWithCurrentState(pendingResumeData);
 							});
 						}
+						if (pauseBtn) {
+							pauseBtn.addEventListener('click', pauseBatch);
+						}
+						if (stopBtn) {
+							stopBtn.addEventListener('click', stopBatch);
+						}
 
 						// Detect an active batch after refresh/navigation and offer manual resume.
 						request('wpgs_export_batch_status')
@@ -909,9 +1014,7 @@ final class WPGS_Admin {
 								progressWrap.hidden = false;
 								renderProgress(data);
 								progressText.textContent += ' Click Resume Export to continue.';
-								if (resumeWrap) {
-									resumeWrap.hidden = false;
-								}
+								refreshControlButtons();
 								setExportButtonsEnabled(false);
 							})
 							.catch(function () {
@@ -1102,6 +1205,34 @@ final class WPGS_Admin {
 		} catch ( Throwable $e ) {
 			wp_send_json_error( [ 'message' => (string) $e->getMessage() ], 500 );
 		}
+	}
+
+	/**
+	 * Stop and clear any active export batch for the current user.
+	 *
+	 * @return void
+	 */
+	public static function ajax_export_batch_stop(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+		}
+		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
+
+		$key = self::export_batch_transient_key();
+		$had_batch = is_array( get_transient( $key ) );
+		delete_transient( $key );
+
+		wp_send_json_success(
+			[
+				'active'    => false,
+				'done'      => false,
+				'last_step' => [
+					'type'    => 'stop',
+					'ok'      => true,
+					'message' => $had_batch ? 'Export batch stopped.' : 'No active export batch to stop.',
+				],
+			]
+		);
 	}
 
 	/**
