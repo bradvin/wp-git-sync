@@ -787,21 +787,25 @@ final class WPGS_Admin {
 							}
 						}
 
+						function setControlVisible(el, visible) {
+							if (!el) {
+								return;
+							}
+							el.hidden = !visible;
+							el.style.display = visible ? '' : 'none';
+						}
+
 						function refreshControlButtons() {
 							if (!controlsWrap) {
 								return;
 							}
-							var showControls = isRunning || isPaused || !!pendingResumeData;
+							var hasPendingResume = !isRunning && !!pendingResumeData;
+							var showControls = isRunning || isPaused || hasPendingResume;
 							controlsWrap.hidden = !showControls;
-							if (resumeBtn) {
-								resumeBtn.hidden = !(isPaused || (!!pendingResumeData && !isRunning));
-							}
-							if (pauseBtn) {
-								pauseBtn.hidden = !(isRunning && !isPaused && !isStopping);
-							}
-							if (stopBtn) {
-								stopBtn.hidden = !(isRunning || isPaused || !!pendingResumeData);
-							}
+							controlsWrap.style.display = showControls ? 'flex' : 'none';
+							setControlVisible(resumeBtn, isPaused || hasPendingResume);
+							setControlVisible(pauseBtn, isRunning && !isPaused && !isStopping);
+							setControlVisible(stopBtn, isRunning || isPaused || hasPendingResume);
 						}
 
 						function renderProgress(data) {
