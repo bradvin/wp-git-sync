@@ -297,14 +297,18 @@ final class WPGS_GitHub_Provider {
 	 * @return array{commit_sha:string}
 	 */
 	public function commit_files_with_deletes( string $branch, string $message, array $files, array $delete_paths ): array {
+		$step = 'start';
 		try {
+			$step = 'ensure_branch';
 			$this->ensure_branch( $branch );
 
 			$parent_commit = null;
 			$base_tree     = null;
 			$is_initial_commit = false;
 			try {
+				$step = 'get_ref_sha';
 				$parent_commit = $this->get_ref_sha( $branch );
+				$step = 'get_commit_tree_sha';
 				$base_tree     = $this->get_commit_tree_sha( $parent_commit );
 			} catch ( Throwable $e ) {
 				if ( $this->is_empty_repo_error( $e ) ) {
@@ -336,28 +340,46 @@ final class WPGS_GitHub_Provider {
 				}
 			}
 
+			$step = 'create_tree';
 			$new_tree   = $this->create_tree( $base_tree, $tree_items );
+			$step = 'create_commit';
 			$new_commit = $this->create_commit( $message, $new_tree, $parent_commit );
 			if ( $is_initial_commit ) {
 				// First commit in an empty repo: branch ref does not exist yet.
 				try {
+					$step = 'create_ref';
 					$this->create_ref( $branch, $new_commit );
 				} catch ( Throwable $e ) {
 					// In case another writer created the ref concurrently, just update.
+					$step = 'update_ref_after_create_ref';
 					$this->update_ref( $branch, $new_commit );
 				}
 			} else {
+				$step = 'update_ref';
 				$this->update_ref( $branch, $new_commit );
 			}
 
 			return [ 'commit_sha' => $new_commit ];
 		} catch ( Throwable $e ) {
 			if ( ! $this->is_empty_repo_error( $e ) ) {
-				throw $e;
+				throw new RuntimeException(
+					sprintf( 'GitHub commit pipeline failed at step "%s": %s', $step, $e->getMessage() ),
+					0,
+					$e
+				);
 			}
 
 			// Last-resort bootstrap for empty repos if any earlier step still returned 409.
-			return $this->bootstrap_empty_repo( $branch, $message, $files );
+			try {
+				$step = 'bootstrap_empty_repo';
+				return $this->bootstrap_empty_repo( $branch, $message, $files );
+			} catch ( Throwable $bootstrap_error ) {
+				throw new RuntimeException(
+					sprintf( 'GitHub commit pipeline failed at step "%s": %s', $step, $bootstrap_error->getMessage() ),
+					0,
+					$bootstrap_error
+				);
+			}
 		}
 	}
 

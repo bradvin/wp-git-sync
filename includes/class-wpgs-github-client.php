@@ -45,8 +45,10 @@ final class WPGS_GitHub_Client {
 	 * @throws RuntimeException On network errors or non-2xx responses.
 	 */
 	public function request( string $method, string $url, ?array $body = null ): array {
+		$method = strtoupper( $method );
+		$endpoint = $this->endpoint_label( $url );
 		$args = [
-			'method'  => strtoupper( $method ),
+			'method'  => $method,
 			'timeout' => 20,
 			'headers' => [
 				'Accept'              => 'application/vnd.github+json',
@@ -63,7 +65,14 @@ final class WPGS_GitHub_Client {
 
 		$res = wp_remote_request( $url, $args );
 		if ( is_wp_error( $res ) ) {
-			throw new RuntimeException( $res->get_error_message() );
+			throw new RuntimeException(
+				sprintf(
+					'GitHub API transport failed during %s %s: %s',
+					$method,
+					$endpoint,
+					$res->get_error_message()
+				)
+			);
 		}
 
 		$code = (int) wp_remote_retrieve_response_code( $res );
@@ -79,9 +88,65 @@ final class WPGS_GitHub_Client {
 
 		if ( $code < 200 || $code >= 300 ) {
 			$message = isset( $data['message'] ) ? (string) $data['message'] : 'GitHub API error.';
-			throw new RuntimeException( sprintf( 'GitHub API request failed (%d): %s', $code, $message ) );
+			$detail = '';
+			if ( isset( $data['errors'] ) && is_array( $data['errors'] ) ) {
+				$error_parts = [];
+				foreach ( $data['errors'] as $error_item ) {
+					if ( ! is_array( $error_item ) ) {
+						continue;
+					}
+					$error_message = isset( $error_item['message'] ) ? trim( (string) $error_item['message'] ) : '';
+					$error_code = isset( $error_item['code'] ) ? trim( (string) $error_item['code'] ) : '';
+					$error_resource = isset( $error_item['resource'] ) ? trim( (string) $error_item['resource'] ) : '';
+					$error_field = isset( $error_item['field'] ) ? trim( (string) $error_item['field'] ) : '';
+					$bits = array_filter(
+						[
+							'' !== $error_resource ? "resource={$error_resource}" : '',
+							'' !== $error_field ? "field={$error_field}" : '',
+							'' !== $error_code ? "code={$error_code}" : '',
+							'' !== $error_message ? "message={$error_message}" : '',
+						]
+					);
+					if ( ! empty( $bits ) ) {
+						$error_parts[] = implode( ', ', $bits );
+					}
+				}
+				if ( ! empty( $error_parts ) ) {
+					$detail = ' | details: ' . implode( ' ; ', $error_parts );
+				}
+			}
+
+			throw new RuntimeException(
+				sprintf(
+					'GitHub API request failed (%d) during %s %s: %s%s',
+					$code,
+					$method,
+					$endpoint,
+					$message,
+					$detail
+				)
+			);
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Build a short endpoint label for error output.
+	 *
+	 * @param string $url Full URL.
+	 * @return string
+	 */
+	private function endpoint_label( string $url ): string {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) ) {
+			return $url;
+		}
+		$path = isset( $parts['path'] ) ? (string) $parts['path'] : '';
+		$query = isset( $parts['query'] ) ? (string) $parts['query'] : '';
+		if ( '' === $path && '' === $query ) {
+			return $url;
+		}
+		return '' !== $query ? ( $path . '?' . $query ) : $path;
 	}
 }
