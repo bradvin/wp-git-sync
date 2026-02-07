@@ -1746,9 +1746,11 @@ final class WPGS_Admin {
 		$action_url = admin_url( 'admin-post.php' );
 
 		$content_changed = (bool) ( $diff['content_changed'] ?? false );
+		$post_changed    = (bool) ( $diff['post_changed'] ?? false );
 		$meta_changed    = (bool) ( $diff['meta_changed'] ?? false );
 		$has_diff        = (bool) $diff;
 		$content_status_class = $has_diff ? ( $content_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
+		$post_status_class    = $has_diff ? ( $post_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
 		$meta_status_class    = $has_diff ? ( $meta_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
 		$post_type_obj = get_post_type_object( (string) $post->post_type );
 		$post_card_title = ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) && '' !== (string) $post_type_obj->labels->singular_name )
@@ -1769,13 +1771,7 @@ final class WPGS_Admin {
 		<div class="wrap wpgs-diff-wrap">
 			<h1>WP Git Sync</h1>
 			<?php self::render_primary_tabs( 'diff', (int) $post_id ); ?>
-			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
-				<a id="wpgs-tab-overview-link" href="#wpgs-tab-overview" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-overview" aria-controls="wpgs-tab-overview" aria-selected="true">Overview</a>
-				<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
-				<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
-			</nav>
-
-				<section id="wpgs-tab-overview" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-overview-link">
+			<section id="wpgs-tab-overview" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-overview-link">
 					<div class="wpgs-overview-grid">
 						<article class="wpgs-card">
 							<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
@@ -1783,9 +1779,29 @@ final class WPGS_Admin {
 								<strong>Title:</strong> <?php echo esc_html( (string) $post->post_title ); ?><br />
 								<strong>ID:</strong> <code><?php echo (int) $post_id; ?></code>
 							</p>
-							<?php if ( $edit_link ) : ?>
-								<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
-						<?php endif; ?>
+							<div class="wpgs-action-row wpgs-post-action-row">
+								<?php if ( $edit_link ) : ?>
+									<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
+								<?php endif; ?>
+								<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+									<input type="hidden" name="action" value="wpgs_check_post" />
+									<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+									<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
+									<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
+								</form>
+								<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+									<input type="hidden" name="action" value="wpgs_export_post" />
+									<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+									<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
+									<?php submit_button( 'Export', 'primary', 'submit', false ); ?>
+								</form>
+								<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
+									<input type="hidden" name="action" value="wpgs_pull_post" />
+									<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+									<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
+									<?php submit_button( 'Import Content', 'delete', 'submit', false ); ?>
+								</form>
+							</div>
 					</article>
 
 						<article class="wpgs-card">
@@ -1830,7 +1846,7 @@ final class WPGS_Admin {
 									</div>
 									<div class="wpgs-detail-row">
 										<dt>Post changed</dt>
-										<dd><?php echo esc_html( ! empty( $diff['post_changed'] ) ? 'Yes' : 'No' ); ?></dd>
+										<dd><?php echo esc_html( $post_changed ? 'Yes' : 'No' ); ?></dd>
 									</div>
 									<div class="wpgs-detail-row">
 										<dt>Meta changed</dt>
@@ -1840,33 +1856,14 @@ final class WPGS_Admin {
 							<?php endif; ?>
 						</article>
 					</div>
-
-				<article class="wpgs-card wpgs-actions-card">
-					<h2 class="wpgs-card-title">Actions</h2>
-					<div class="wpgs-action-row">
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-							<input type="hidden" name="action" value="wpgs_check_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
-						</form>
-
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-							<input type="hidden" name="action" value="wpgs_export_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Push local to GitHub (sync)', 'primary', 'submit', false ); ?>
-						</form>
-
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
-							<input type="hidden" name="action" value="wpgs_pull_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Pull from GitHub (overwrite post)', 'delete', 'submit', false ); ?>
-						</form>
-					</div>
-				</article>
 			</section>
+
+			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
+				<a id="wpgs-tab-overview-link" href="#wpgs-tab-overview" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-overview" aria-controls="wpgs-tab-overview" aria-selected="true">Overview</a>
+				<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
+				<a id="wpgs-tab-post-link" href="#wpgs-tab-post" class="nav-tab" role="tab" data-tab="wpgs-tab-post" aria-controls="wpgs-tab-post" aria-selected="false">Post <span class="wpgs-tab-light <?php echo esc_attr( $post_status_class ); ?>" aria-hidden="true"></span></a>
+				<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
+			</nav>
 
 			<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
 				<?php if ( ! $diff ) : ?>
@@ -1879,6 +1876,18 @@ final class WPGS_Admin {
 							// wp_text_diff() returns HTML.
 							echo (string) ( $diff['content_diff'] ?? '' );
 						?>
+					</div>
+				<?php endif; ?>
+			</section>
+
+			<section id="wpgs-tab-post" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-post-link" hidden>
+				<?php if ( ! $diff ) : ?>
+					<div class="wpgs-empty-panel">No diff data yet. Run "Check for changes" in the Overview tab.</div>
+				<?php elseif ( ! $post_changed ) : ?>
+					<div class="wpgs-empty-panel">(no changes)</div>
+				<?php else : ?>
+					<div class="wpgs-diff-output wpgs-diff-surface">
+						<?php echo (string) ( $diff['post_diff'] ?? '' ); ?>
 					</div>
 				<?php endif; ?>
 			</section>
@@ -1945,13 +1954,18 @@ final class WPGS_Admin {
 							row-gap: 2px;
 						}
 					}
-					.wpgs-actions-card {
-						margin-top: 14px;
-					}
 				.wpgs-action-row {
 					display: flex;
 					gap: 8px;
 					flex-wrap: wrap;
+					align-items: center;
+				}
+				.wpgs-action-row p,
+				.wpgs-action-row form {
+					margin: 0;
+				}
+				.wpgs-post-action-row {
+					margin-top: 12px;
 				}
 				.wpgs-tab-panel {
 					margin-top: 16px;
