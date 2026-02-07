@@ -326,9 +326,11 @@ final class WPGS_GitHub_Provider {
 				&& self::EMPTY_TREE_SHA !== trim( $base_tree );
 
 			if ( $can_apply_deletes ) {
+				$step = 'get_tree_paths_for_deletes';
+				$existing_delete_targets = array_fill_keys( $this->get_tree_paths( (string) $base_tree ), true );
 				foreach ( $delete_paths as $path ) {
 					$path = ltrim( (string) $path, '/' );
-					if ( '' === $path ) {
+					if ( '' === $path || ! isset( $existing_delete_targets[ $path ] ) ) {
 						continue;
 					}
 					$tree_items[] = [
@@ -480,6 +482,33 @@ final class WPGS_GitHub_Provider {
 			];
 		}
 		return $tree_items;
+	}
+
+	/**
+	 * List file paths present in a tree.
+	 *
+	 * @param string $tree_sha Tree SHA.
+	 * @return string[]
+	 */
+	private function get_tree_paths( string $tree_sha ): array {
+		$data = $this->client->request(
+			'GET',
+			$this->api( '/git/trees/' . rawurlencode( $tree_sha ) . '?recursive=1' )
+		);
+		$tree = isset( $data['tree'] ) && is_array( $data['tree'] ) ? $data['tree'] : [];
+		$paths = [];
+		foreach ( $tree as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$path = isset( $item['path'] ) ? ltrim( (string) $item['path'], '/' ) : '';
+			$type = isset( $item['type'] ) ? (string) $item['type'] : '';
+			if ( '' === $path || 'blob' !== $type ) {
+				continue;
+			}
+			$paths[] = $path;
+		}
+		return array_values( array_unique( $paths ) );
 	}
 
 	/**

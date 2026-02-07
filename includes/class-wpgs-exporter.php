@@ -345,13 +345,6 @@ final class WPGS_Exporter {
 			}
 		}
 
-		// Remove old layout files if they differ from the current deterministic paths.
-		foreach ( $this->legacy_paths_for_post( $post ) as $legacy_path ) {
-			if ( ! in_array( $legacy_path, [ $content_rel, $post_rel, $meta_rel ], true ) ) {
-				$paths_to_delete[] = $legacy_path;
-			}
-		}
-
 		$files_to_write[ $content_rel ] = $content;
 		$files_to_write[ $post_rel ]    = $post_js;
 		$files_to_write[ $meta_rel ]    = $meta_js;
@@ -398,25 +391,6 @@ final class WPGS_Exporter {
 			}
 		}
 		return $out;
-	}
-
-	/**
-	 * Old-layout paths for this post, kept for migration cleanup.
-	 *
-	 * @param WP_Post $post Post.
-	 * @return string[]
-	 */
-	private function legacy_paths_for_post( WP_Post $post ): array {
-		$post_type = sanitize_key( (string) $post->post_type );
-		$post_type = '' !== $post_type ? $post_type : 'unknown';
-		$slug_raw  = $post->post_name ? (string) $post->post_name : (string) $post->ID;
-		$slug_safe = sanitize_title( $slug_raw );
-		$slug_safe = '' === $slug_safe ? 'no-slug' : $slug_safe;
-
-		return [
-			sprintf( 'posts/%s/%d-%s.md', $post_type, (int) $post->ID, $slug_safe ),
-			sprintf( 'meta/%s/%d-%s.json', $post_type, (int) $post->ID, $slug_safe ),
-		];
 	}
 
 	/**
