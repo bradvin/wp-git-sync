@@ -797,7 +797,7 @@ final class WPGS_Admin {
 								resumeBtn.hidden = !(isPaused || (!!pendingResumeData && !isRunning));
 							}
 							if (pauseBtn) {
-								pauseBtn.hidden = !isRunning;
+								pauseBtn.hidden = !(isRunning && !isPaused && !isStopping);
 							}
 							if (stopBtn) {
 								stopBtn.hidden = !(isRunning || isPaused || !!pendingResumeData);
@@ -943,6 +943,7 @@ final class WPGS_Admin {
 							stopRequested = true;
 							isRunning = false;
 							isPaused = false;
+							refreshControlButtons();
 							request('wpgs_export_batch_stop')
 								.then(function (res) {
 									if (!res.success) {
