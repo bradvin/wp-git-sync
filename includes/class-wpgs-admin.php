@@ -702,23 +702,32 @@ final class WPGS_Admin {
 					table-layout: fixed;
 				}
 				.wpgs-sync-table .wpgs-col-post {
-					width: 42%;
+					width: 38%;
 				}
 				.wpgs-sync-table .wpgs-col-state {
 					width: 10%;
 				}
 				.wpgs-sync-table .wpgs-col-synced {
-					width: 14%;
+					width: 12%;
 				}
 				.wpgs-sync-table .wpgs-col-error {
-					width: 28%;
+					width: 24%;
 				}
 				.wpgs-sync-table .wpgs-col-actions {
-					width: 6%;
+					width: 16%;
 				}
 				.wpgs-sync-table td.wpgs-row-last-error {
 					white-space: normal;
 					word-break: break-word;
+				}
+				.wpgs-sync-table td.wpgs-row-actions {
+					white-space: nowrap;
+				}
+				.wpgs-sync-table td.wpgs-row-actions .button {
+					margin-right: 4px;
+				}
+				.wpgs-sync-table td.wpgs-row-actions .button:last-child {
+					margin-right: 0;
 				}
 				.wpgs-pill {
 					display: inline-block;
