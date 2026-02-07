@@ -34,6 +34,8 @@ final class WPGS_Admin {
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
 		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
 		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
+		add_action( 'admin_post_wpgs_pull_post_data', [ __CLASS__, 'handle_pull_post_data' ] );
+		add_action( 'admin_post_wpgs_pull_post_meta', [ __CLASS__, 'handle_pull_post_meta' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_start', [ __CLASS__, 'ajax_export_batch_start' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_status', [ __CLASS__, 'ajax_export_batch_status' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_step', [ __CLASS__, 'ajax_export_batch_step' ] );
@@ -1561,37 +1563,40 @@ final class WPGS_Admin {
 	}
 
 	/**
-	 * Handle "check for changes" for a single post.
+	 * Build GitHub provider context from current settings.
 	 *
-	 * Computes diffs against remote GitHub content and stores the result in a
-	 * user-scoped transient, then redirects to a management page.
-	 *
-	 * @return void
+	 * @return array{provider:WPGS_GitHub_Provider,branch:string,repo:string}
 	 */
-	public static function handle_check_post(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
-		}
-
-		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
-		check_admin_referer( 'wpgs_check_post_' . $post_id );
-
-		$post = get_post( $post_id );
-		if ( ! $post ) {
-			wp_die( 'Invalid post.' );
-		}
-
+	private static function github_provider_context(): array {
 		$settings = WPGS_Settings::get();
-		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
-		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
-		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
-		$token  = WPGS_Auth::get_token( $settings );
+		$owner    = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
+		$repo     = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
+		$branch   = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
+		$branch   = '' !== $branch ? $branch : 'main';
+		$token    = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
-			wp_die( 'GitHub owner/repo not configured.' );
+			throw new RuntimeException( 'GitHub owner/repo not configured.' );
 		}
 
-		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
+		return [
+			'provider' => new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo ),
+			'branch'   => $branch,
+			'repo'     => $owner . '/' . $repo,
+		];
+	}
+
+	/**
+	 * Compute and store diff result for a post in the user-scoped transient.
+	 *
+	 * @param WP_Post $post Post object.
+	 * @return void
+	 */
+	private static function run_diff_check_for_post( WP_Post $post ): void {
+		$context  = self::github_provider_context();
+		$provider = $context['provider'];
+		$branch   = (string) $context['branch'];
+		$repo     = (string) $context['repo'];
 
 		$paths = WPGS_Diff::paths_for_post( $post );
 		$local = WPGS_Diff::build_local_payload( $post );
@@ -1601,7 +1606,7 @@ final class WPGS_Admin {
 			$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
 			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
 		} catch ( Throwable $e ) {
-			wp_die( esc_html( 'Unable to fetch remote files for diff: ' . $e->getMessage() ) );
+			throw new RuntimeException( 'Unable to fetch remote files for diff: ' . $e->getMessage(), 0, $e );
 		}
 
 		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
@@ -1643,30 +1648,159 @@ final class WPGS_Admin {
 			]
 		) : '';
 
-		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
-		set_transient( $transient_key, [
-			'checked_at'      => gmdate( 'c' ),
-			'repo'            => $owner . '/' . $repo,
-			'branch'          => $branch,
-			'post_id'         => (int) $post_id,
-			'post_type'       => (string) $post->post_type,
-			'content_path'    => (string) $paths['content_path'],
-			'post_path'       => (string) $paths['post_path'],
-			'meta_path'       => (string) $paths['meta_path'],
-			'content_changed' => (bool) $content_changed,
-			'post_changed'    => (bool) $post_changed,
-			'meta_changed'    => (bool) $meta_changed,
-			'content_diff'    => (string) $content_diff,
-			'post_diff'       => (string) $post_diff,
-			'meta_diff'       => (string) $meta_diff,
-		], 5 * MINUTE_IN_SECONDS );
+		$transient_key = self::diff_transient_key( (int) $post->ID, (int) get_current_user_id() );
+		set_transient(
+			$transient_key,
+			[
+				'checked_at'      => gmdate( 'c' ),
+				'repo'            => $repo,
+				'branch'          => $branch,
+				'post_id'         => (int) $post->ID,
+				'post_type'       => (string) $post->post_type,
+				'content_path'    => (string) $paths['content_path'],
+				'post_path'       => (string) $paths['post_path'],
+				'meta_path'       => (string) $paths['meta_path'],
+				'content_changed' => (bool) $content_changed,
+				'post_changed'    => (bool) $post_changed,
+				'meta_changed'    => (bool) $meta_changed,
+				'content_diff'    => (string) $content_diff,
+				'post_diff'       => (string) $post_diff,
+				'meta_diff'       => (string) $meta_diff,
+			],
+			5 * MINUTE_IN_SECONDS
+		);
+	}
+
+	/**
+	 * Decode a JSON payload and ensure it is an array.
+	 *
+	 * @param string $json Raw JSON.
+	 * @param string $label Payload label for errors.
+	 * @return array<mixed>
+	 */
+	private static function decode_json_array_payload( string $json, string $label ): array {
+		$decoded = json_decode( $json, true );
+		if ( ! is_array( $decoded ) ) {
+			throw new RuntimeException( sprintf( 'Unable to decode remote %s JSON.', $label ) );
+		}
+		return $decoded;
+	}
+
+	/**
+	 * Apply imported post-table data to a local post.
+	 *
+	 * @param int                 $post_id Post ID.
+	 * @param array<string,mixed> $post_data Remote post-data payload.
+	 * @return void
+	 */
+	private static function apply_remote_post_data( int $post_id, array $post_data ): void {
+		unset( $post_data['ID'], $post_data['post_content'], $post_data['filter'] );
+
+		$allowed_keys = [
+			'post_author',
+			'post_date',
+			'post_date_gmt',
+			'post_title',
+			'post_excerpt',
+			'post_status',
+			'comment_status',
+			'ping_status',
+			'post_password',
+			'post_name',
+			'to_ping',
+			'pinged',
+			'post_content_filtered',
+			'post_parent',
+			'guid',
+			'menu_order',
+			'post_type',
+			'post_mime_type',
+		];
+
+		$update = [ 'ID' => $post_id ];
+		foreach ( $allowed_keys as $key ) {
+			if ( array_key_exists( $key, $post_data ) ) {
+				$update[ $key ] = $post_data[ $key ];
+			}
+		}
+
+		if ( 1 === count( $update ) ) {
+			return;
+		}
+
+		$res = wp_update_post( $update, true );
+		if ( is_wp_error( $res ) ) {
+			throw new RuntimeException( $res->get_error_message() );
+		}
+	}
+
+	/**
+	 * Apply imported post meta payload to a local post.
+	 *
+	 * @param int                 $post_id Post ID.
+	 * @param array<string,mixed> $meta_payload Remote meta payload.
+	 * @return void
+	 */
+	private static function apply_remote_post_meta( int $post_id, array $meta_payload ): void {
+		$protected = array_fill_keys(
+			array_merge( WPGS_Sync_Meta::internal_keys(), WPGS_Diff::meta_blacklist() ),
+			true
+		);
+
+		$existing = get_post_meta( $post_id );
+		if ( is_array( $existing ) ) {
+			foreach ( array_keys( $existing ) as $meta_key ) {
+				$meta_key = (string) $meta_key;
+				if ( '' === $meta_key || isset( $protected[ $meta_key ] ) ) {
+					continue;
+				}
+				delete_post_meta( $post_id, $meta_key );
+			}
+		}
+
+		foreach ( $meta_payload as $meta_key => $values ) {
+			$meta_key = (string) $meta_key;
+			if ( '' === $meta_key || isset( $protected[ $meta_key ] ) ) {
+				continue;
+			}
+
+			$list = is_array( $values ) ? $values : [ $values ];
+			foreach ( $list as $value ) {
+				add_post_meta( $post_id, $meta_key, $value, false );
+			}
+		}
+	}
+
+	/**
+	 * Handle "check for changes" for a single post.
+	 *
+	 * @return void
+	 */
+	public static function handle_check_post(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		check_admin_referer( 'wpgs_check_post_' . $post_id );
+
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			wp_die( 'Invalid post.' );
+		}
+
+		try {
+			self::run_diff_check_for_post( $post );
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( $e->getMessage() ) );
+		}
 
 		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
 		exit;
 	}
 
 	/**
-	 * Pull remote content from GitHub and overwrite the local post content.
+	 * Import remote content from GitHub and overwrite local post content.
 	 *
 	 * @return void
 	 */
@@ -1683,36 +1817,114 @@ final class WPGS_Admin {
 			wp_die( 'Invalid post.' );
 		}
 
-		$settings = WPGS_Settings::get();
-		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
-		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
-		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
-		$token  = WPGS_Auth::get_token( $settings );
+		try {
+			$context  = self::github_provider_context();
+			$provider = $context['provider'];
+			$branch   = (string) $context['branch'];
+			$paths    = WPGS_Diff::paths_for_post( $post );
 
-		if ( '' === $owner || '' === $repo ) {
-			wp_die( 'GitHub owner/repo not configured.' );
+			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+			$res = wp_update_post(
+				[
+					'ID'           => (int) $post_id,
+					'post_content' => (string) $remote_content,
+				],
+				true
+			);
+
+			if ( is_wp_error( $res ) ) {
+				throw new RuntimeException( $res->get_error_message() );
+			}
+
+			$updated_post = get_post( $post_id );
+			if ( $updated_post ) {
+				self::run_diff_check_for_post( $updated_post );
+			}
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( 'Unable to import remote content: ' . $e->getMessage() ) );
 		}
 
-		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
-		$paths = WPGS_Diff::paths_for_post( $post );
+		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
+		exit;
+	}
+
+	/**
+	 * Import remote post-table JSON and apply it to the local post.
+	 *
+	 * @return void
+	 */
+	public static function handle_pull_post_data(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		check_admin_referer( 'wpgs_pull_post_data_' . $post_id );
+
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			wp_die( 'Invalid post.' );
+		}
 
 		try {
-			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+			$context  = self::github_provider_context();
+			$provider = $context['provider'];
+			$branch   = (string) $context['branch'];
+			$paths    = WPGS_Diff::paths_for_post( $post );
+
+			$remote_post_json = $provider->get_file_contents( $branch, $paths['post_path'] );
+			$post_payload     = self::decode_json_array_payload( $remote_post_json, 'post data' );
+			self::apply_remote_post_data( $post_id, $post_payload );
+
+			$updated_post = get_post( $post_id );
+			if ( $updated_post ) {
+				self::run_diff_check_for_post( $updated_post );
+			}
 		} catch ( Throwable $e ) {
-			wp_die( esc_html( 'Unable to fetch remote content: ' . $e->getMessage() ) );
+			wp_die( esc_html( 'Unable to import remote post data: ' . $e->getMessage() ) );
 		}
 
-		$res = wp_update_post( [
-			'ID'           => (int) $post_id,
-			'post_content' => (string) $remote_content,
-		], true );
+		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
+		exit;
+	}
 
-		if ( is_wp_error( $res ) ) {
-			wp_die( esc_html( $res->get_error_message() ) );
+	/**
+	 * Import remote post-meta JSON and apply it to local post meta.
+	 *
+	 * @return void
+	 */
+	public static function handle_pull_post_meta(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
 		}
 
-		// Re-check after pulling so the diff page reflects current state.
-		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id, 'wpgs' => 'pulled' ] ) );
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		check_admin_referer( 'wpgs_pull_post_meta_' . $post_id );
+
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			wp_die( 'Invalid post.' );
+		}
+
+		try {
+			$context  = self::github_provider_context();
+			$provider = $context['provider'];
+			$branch   = (string) $context['branch'];
+			$paths    = WPGS_Diff::paths_for_post( $post );
+
+			$remote_meta_json = $provider->get_file_contents( $branch, $paths['meta_path'] );
+			$meta_payload     = self::decode_json_array_payload( $remote_meta_json, 'meta data' );
+			self::apply_remote_post_meta( $post_id, $meta_payload );
+
+			$updated_post = get_post( $post_id );
+			if ( $updated_post ) {
+				self::run_diff_check_for_post( $updated_post );
+			}
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( 'Unable to import remote meta data: ' . $e->getMessage() ) );
+		}
+
+		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
 		exit;
 	}
 
@@ -1864,18 +2076,6 @@ final class WPGS_Admin {
 								<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
 							</form>
 						<?php endif; ?>
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-							<input type="hidden" name="action" value="wpgs_export_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Export', 'primary', 'submit', false ); ?>
-						</form>
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
-							<input type="hidden" name="action" value="wpgs_pull_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Import Content', 'delete', 'submit', false ); ?>
-						</form>
 					</div>
 				</article>
 			</div>
@@ -1909,6 +2109,34 @@ final class WPGS_Admin {
 								<dd><?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?></dd>
 							</div>
 						</dl>
+						<?php if ( $content_changed || $post_changed || $meta_changed ) : ?>
+							<div class="wpgs-action-row wpgs-check-import-row">
+								<?php if ( $content_changed ) : ?>
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post content using the remote content file. Continue?');">
+										<input type="hidden" name="action" value="wpgs_pull_post" />
+										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
+										<?php submit_button( 'Import Content', 'secondary', 'submit', false ); ?>
+									</form>
+								<?php endif; ?>
+								<?php if ( $post_changed ) : ?>
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post table fields using the remote post JSON. Continue?');">
+										<input type="hidden" name="action" value="wpgs_pull_post_data" />
+										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_data_' . (int) $post_id ) ); ?>" />
+										<?php submit_button( 'Import Post Data', 'secondary', 'submit', false ); ?>
+									</form>
+								<?php endif; ?>
+								<?php if ( $meta_changed ) : ?>
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will replace local post meta using the remote meta JSON. Continue?');">
+										<input type="hidden" name="action" value="wpgs_pull_post_meta" />
+										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_meta_' . (int) $post_id ) ); ?>" />
+										<?php submit_button( 'Import Meta Data', 'secondary', 'submit', false ); ?>
+									</form>
+								<?php endif; ?>
+							</div>
+						<?php endif; ?>
 					</article>
 				</section>
 
@@ -2015,6 +2243,9 @@ final class WPGS_Admin {
 					margin: 0;
 				}
 				.wpgs-post-action-row {
+					margin-top: 12px;
+				}
+				.wpgs-check-import-row {
 					margin-top: 12px;
 				}
 				.wpgs-tab-panel {
