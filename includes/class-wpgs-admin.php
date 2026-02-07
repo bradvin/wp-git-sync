@@ -1741,6 +1741,14 @@ final class WPGS_Admin {
 		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
 		$diff = get_transient( $transient_key );
 		$diff = is_array( $diff ) ? $diff : null;
+		$sync_state = WPGS_Sync_Meta::get( (int) $post_id );
+		$has_sync_state = false;
+		foreach ( $sync_state as $sync_value ) {
+			if ( '' !== trim( (string) $sync_value ) ) {
+				$has_sync_state = true;
+				break;
+			}
+		}
 
 		$edit_link = get_edit_post_link( (int) $post_id, 'raw' );
 		$action_url = admin_url( 'admin-post.php' );
@@ -1759,30 +1767,30 @@ final class WPGS_Admin {
 		$content_file_url = '';
 		$post_file_url    = '';
 		$meta_file_url    = '';
-		if ( $diff ) {
+		if ( $has_sync_state ) {
 			$link_state = [
-				'repo'   => (string) ( $diff['repo'] ?? '' ),
-				'branch' => (string) ( $diff['branch'] ?? '' ),
+				'repo'   => (string) ( $sync_state['repo'] ?? '' ),
+				'branch' => (string) ( $sync_state['branch'] ?? '' ),
 			];
 			$content_file_url = self::github_file_url_from_state(
 				[
 					'repo'   => $link_state['repo'],
 					'branch' => $link_state['branch'],
-					'path'   => (string) ( $diff['content_path'] ?? '' ),
+					'path'   => (string) ( $sync_state['content_path'] ?? '' ),
 				]
 			);
 			$post_file_url = self::github_file_url_from_state(
 				[
 					'repo'   => $link_state['repo'],
 					'branch' => $link_state['branch'],
-					'path'   => (string) ( $diff['post_path'] ?? '' ),
+					'path'   => (string) ( $sync_state['post_path'] ?? '' ),
 				]
 			);
 			$meta_file_url = self::github_file_url_from_state(
 				[
 					'repo'   => $link_state['repo'],
 					'branch' => $link_state['branch'],
-					'path'   => (string) ( $diff['meta_path'] ?? '' ),
+					'path'   => (string) ( $sync_state['meta_path'] ?? '' ),
 				]
 			);
 		}
@@ -1798,23 +1806,23 @@ final class WPGS_Admin {
 						<strong>Title:</strong> <?php echo esc_html( (string) $post->post_title ); ?><br />
 						<strong>ID:</strong> <code><?php echo (int) $post_id; ?></code>
 					</p>
-					<?php if ( $diff ) : ?>
+					<?php if ( $has_sync_state ) : ?>
 						<dl class="wpgs-detail-grid wpgs-post-sync-grid">
 							<div class="wpgs-detail-row">
 								<dt>Repo</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code></dd>
+								<dd><code><?php echo esc_html( (string) ( $sync_state['repo'] ?? '' ) ); ?></code></dd>
 							</div>
 							<div class="wpgs-detail-row">
 								<dt>Branch</dt>
-								<dd><code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code></dd>
+								<dd><code><?php echo esc_html( (string) ( $sync_state['branch'] ?? '' ) ); ?></code></dd>
 							</div>
 							<div class="wpgs-detail-row">
 								<dt>Content path</dt>
 								<dd>
 									<?php if ( '' !== $content_file_url ) : ?>
-										<a href="<?php echo esc_url( $content_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code></a>
+										<a href="<?php echo esc_url( $content_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['content_path'] ?? '' ) ); ?></code></a>
 									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code>
+										<code><?php echo esc_html( (string) ( $sync_state['content_path'] ?? '' ) ); ?></code>
 									<?php endif; ?>
 								</dd>
 							</div>
@@ -1822,9 +1830,9 @@ final class WPGS_Admin {
 								<dt>Post path</dt>
 								<dd>
 									<?php if ( '' !== $post_file_url ) : ?>
-										<a href="<?php echo esc_url( $post_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code></a>
+										<a href="<?php echo esc_url( $post_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['post_path'] ?? '' ) ); ?></code></a>
 									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code>
+										<code><?php echo esc_html( (string) ( $sync_state['post_path'] ?? '' ) ); ?></code>
 									<?php endif; ?>
 								</dd>
 							</div>
@@ -1832,9 +1840,9 @@ final class WPGS_Admin {
 								<dt>Meta path</dt>
 								<dd>
 									<?php if ( '' !== $meta_file_url ) : ?>
-										<a href="<?php echo esc_url( $meta_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code></a>
+										<a href="<?php echo esc_url( $meta_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['meta_path'] ?? '' ) ); ?></code></a>
 									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code>
+										<code><?php echo esc_html( (string) ( $sync_state['meta_path'] ?? '' ) ); ?></code>
 									<?php endif; ?>
 								</dd>
 							</div>
@@ -1844,12 +1852,14 @@ final class WPGS_Admin {
 						<?php if ( $edit_link ) : ?>
 							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
 						<?php endif; ?>
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-							<input type="hidden" name="action" value="wpgs_check_post" />
-							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
-							<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
-						</form>
+						<?php if ( $has_sync_state ) : ?>
+							<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+								<input type="hidden" name="action" value="wpgs_check_post" />
+								<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+								<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
+								<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
+							</form>
+						<?php endif; ?>
 						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
 							<input type="hidden" name="action" value="wpgs_export_post" />
 							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
@@ -1879,7 +1889,11 @@ final class WPGS_Admin {
 				<article class="wpgs-card">
 					<h2 class="wpgs-card-title">Latest check</h2>
 					<?php if ( ! $diff ) : ?>
-						<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
+						<?php if ( $has_sync_state ) : ?>
+							<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
+						<?php else : ?>
+							<p class="description">No sync metadata found yet. Export this post first to enable checks.</p>
+						<?php endif; ?>
 					<?php else : ?>
 						<dl class="wpgs-detail-grid">
 							<div class="wpgs-detail-row">
