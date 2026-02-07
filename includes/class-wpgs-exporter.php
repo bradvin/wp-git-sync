@@ -421,16 +421,15 @@ final class WPGS_Exporter {
 	 * @return string
 	 */
 	private function generate_repo_index_readme( array $mapping ): string {
-		$pages = [];
-		$posts = [];
-		$other = [];
+		$groups = [];
 
 		$items = isset( $mapping['items'] ) && is_array( $mapping['items'] ) ? $mapping['items'] : [];
 		foreach ( $items as $id => $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
 			}
-			$post_type = (string) ( $item['post_type'] ?? '' );
+			$post_type = sanitize_key( (string) ( $item['post_type'] ?? '' ) );
+			$post_type = '' !== $post_type ? $post_type : 'unknown';
 			$title     = (string) ( $item['post_title'] ?? ( 'Post ' . $id ) );
 			$permalink = (string) ( $item['permalink'] ?? '' );
 			$content_path = (string) ( $item['content_path'] ?? '' );
@@ -448,37 +447,18 @@ final class WPGS_Exporter {
 				'sort' => strtolower( $title . '|' . $permalink ),
 				'line' => sprintf( '| %s | %s | %s | %s |', $post_link, $post_json, $meta_json, $content_link ),
 			];
-
-			if ( 'page' === $post_type ) {
-				$pages[] = $row;
-			} elseif ( 'post' === $post_type ) {
-				$posts[] = $row;
-			} else {
-				$other[ $post_type ][] = $row;
-			}
+			$groups[ $post_type ][] = $row;
 		}
 
-		usort(
-			$pages,
-			static function ( array $a, array $b ): int {
-				return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
-			}
-		);
-		usort(
-			$posts,
-			static function ( array $a, array $b ): int {
-				return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
-			}
-		);
-		ksort( $other );
-		foreach ( $other as $pt => $rows ) {
+		ksort( $groups );
+		foreach ( $groups as $post_type => $rows ) {
 			usort(
 				$rows,
 				static function ( array $a, array $b ): int {
 					return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
 				}
 			);
-			$other[ $pt ] = $rows;
+			$groups[ $post_type ] = $rows;
 		}
 
 		$out   = [];
@@ -490,50 +470,20 @@ final class WPGS_Exporter {
 		$out[] = sprintf( '- Branch: `%s`', (string) ( $mapping['branch'] ?? '' ) );
 		$out[] = '';
 
-		$out[] = '## Pages';
-		$out[] = '';
-		$out[] = '| Post | Post JSON | Meta JSON | Content |';
-		$out[] = '| --- | --- | --- | --- |';
-		if ( empty( $pages ) ) {
-			$out[] = '| (none) | - | - | - |';
-		} else {
-			foreach ( $pages as $row ) {
-				$out[] = (string) ( $row['line'] ?? '' );
-			}
-		}
-		$out[] = '';
-
-		$out[] = '## Posts';
-		$out[] = '';
-		$out[] = '| Post | Post JSON | Meta JSON | Content |';
-		$out[] = '| --- | --- | --- | --- |';
-		if ( empty( $posts ) ) {
-			$out[] = '| (none) | - | - | - |';
-		} else {
-			foreach ( $posts as $row ) {
-				$out[] = (string) ( $row['line'] ?? '' );
-			}
-		}
-		$out[] = '';
-
-		$out[] = '## Other';
-		$out[] = '';
-		if ( empty( $other ) ) {
+		if ( empty( $groups ) ) {
+			$out[] = '## Items';
+			$out[] = '';
 			$out[] = '| Post | Post JSON | Meta JSON | Content |';
 			$out[] = '| --- | --- | --- | --- |';
 			$out[] = '| (none) | - | - | - |';
 		} else {
-			foreach ( $other as $pt => $rows ) {
-				$out[] = '### ' . $pt;
+			foreach ( $groups as $post_type => $rows ) {
+				$out[] = '## ' . $post_type;
 				$out[] = '';
 				$out[] = '| Post | Post JSON | Meta JSON | Content |';
 				$out[] = '| --- | --- | --- | --- |';
-				if ( empty( $rows ) ) {
-					$out[] = '| (none) | - | - | - |';
-				} else {
-					foreach ( $rows as $row ) {
-						$out[] = (string) ( $row['line'] ?? '' );
-					}
+				foreach ( $rows as $row ) {
+					$out[] = (string) ( $row['line'] ?? '' );
 				}
 				$out[] = '';
 			}
