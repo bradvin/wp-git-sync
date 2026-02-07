@@ -593,7 +593,7 @@ final class WPGS_Admin {
 										</button>
 									</p>
 
-									<h3>Synced Or Error Posts</h3>
+									<h3>Synced Posts</h3>
 									<?php if ( empty( $tab['rows'] ) ) : ?>
 										<p class="description">No synced/error posts found for this post type.</p>
 									<?php else : ?>
