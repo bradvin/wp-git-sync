@@ -2,11 +2,11 @@
 
 WP Git Sync is a WordPress plugin that syncs WordPress post content + meta into a GitHub repository branch using deterministic file paths.
 
-> Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and supports **Device Flow OAuth** and **fine-grained PATs**.
+> Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and uses **fine-grained PAT** auth.
 
 ## What it does
 
-- Configures a GitHub repo (`owner` + `repo`) + branch (default: `wp-content-sync`)
+- Configures a GitHub repo (`owner` + `repo`) + branch (default: `main`)
 - Exports posts/pages to deterministic files
 - Maintains a mapping file at `wp-git-sync/mapping.json` in the repo
 - Generates/updates a deterministic repo-root `README.md` index in the repo
@@ -34,33 +34,18 @@ Format:
 
 ## Auth
 
-### Device Flow OAuth
-
-- Define your GitHub OAuth App client id in `wp-config.php`:
-
-```php
-define( 'WPGS_GITHUB_CLIENT_ID', 'Iv1.1234567890abcdef' );
-```
-
-- In **Settings → WP Git Sync** select **Device Flow OAuth** and click **Connect GitHub**.
-- The settings page will show a user code + verification URL.
-- After authorizing, click **Complete connection (poll)**.
-
-Scopes:
-- Public repos: `public_repo`
-- Private repos: `repo`
-
 ### Fine-grained PAT
-
-Modes:
-- `pat_storage=wp_config` (preferred)
-- `pat_storage=options`
 
 wp-config.php mode:
 
 ```php
 define( 'WPGS_GITHUB_PAT', 'github_pat_...' );
 ```
+
+Settings mode:
+- In **Settings → WP Git Sync**, paste the token into **GitHub PAT token**
+- Save settings
+- After PAT is saved, the **GitHub repo** field appears as a dropdown populated from your accessible repos
 
 Required permissions for the selected repo:
 - Contents: Read and write
@@ -77,9 +62,9 @@ Required permissions for the selected repo:
 1. Install the plugin (copy into `wp-content/plugins/wp-git-sync/`).
 2. Activate it in WordPress.
 3. Go to **Settings → WP Git Sync** and set:
-   - Repo URL
+   - GitHub PAT token (or set `WPGS_GITHUB_PAT` in `wp-config.php`)
+   - GitHub repo (from dropdown)
    - Branch
-   - Local clone path
 4. Go to **Tools → WP Git Sync** and click **Export all posts/pages now**.
 
 ## Notes
@@ -91,6 +76,5 @@ Required permissions for the selected repo:
 
 Next:
 - Replace git-shell adapter with a GitHub API adapter (Git Data API for batch commits)
-- Device Flow OAuth + PAT (wp-config constant supported)
 - Per-post remote fetch + diff + apply
 - On-save auto-push if previously synced

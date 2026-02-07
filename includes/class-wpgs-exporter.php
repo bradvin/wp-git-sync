@@ -153,7 +153,7 @@ final class WPGS_Exporter {
 	private function resolve_target(): array {
 		$owner  = isset( $this->settings['github_owner'] ) ? trim( (string) $this->settings['github_owner'] ) : '';
 		$repo   = isset( $this->settings['github_repo'] ) ? trim( (string) $this->settings['github_repo'] ) : '';
-		$branch = isset( $this->settings['branch'] ) ? trim( (string) $this->settings['branch'] ) : 'wp-content-sync';
+		$branch = isset( $this->settings['branch'] ) ? trim( (string) $this->settings['branch'] ) : 'main';
 
 		if ( '' === $owner || '' === $repo ) {
 			throw new RuntimeException( 'GitHub owner/repo not configured.' );

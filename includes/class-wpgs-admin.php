@@ -14,7 +14,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Security notes:
  * - All state-changing actions are protected by capability checks and nonces.
- * - OAuth token exchange happens server-side and tokens are stored in wp_options.
  */
 final class WPGS_Admin {
 	/**
@@ -34,9 +33,6 @@ final class WPGS_Admin {
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
 		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
 		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
-		add_action( 'admin_post_wpgs_oauth_start', [ __CLASS__, 'handle_oauth_start' ] );
-		add_action( 'admin_post_wpgs_oauth_poll', [ __CLASS__, 'handle_oauth_poll' ] );
-		add_action( 'admin_post_wpgs_oauth_disconnect', [ __CLASS__, 'handle_oauth_disconnect' ] );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notices' ] );
 	}
@@ -135,7 +131,31 @@ final class WPGS_Admin {
 		}
 
 		$settings = WPGS_Settings::get();
-		$oauth_connected = ( 'device_oauth' === (string) $settings['auth_mode'] ) && '' !== trim( (string) $settings['device_token'] );
+		$selected_repo_full = '';
+		if ( '' !== trim( (string) $settings['github_owner'] ) && '' !== trim( (string) $settings['github_repo'] ) ) {
+			$selected_repo_full = trim( (string) $settings['github_owner'] ) . '/' . trim( (string) $settings['github_repo'] );
+		}
+
+		$token_available = false;
+		$repo_options = [];
+		$repo_fetch_error = '';
+		try {
+			$token = WPGS_Auth::get_token( $settings );
+			$token_available = true;
+			$repos = self::fetch_repo_options( $token );
+			if ( is_wp_error( $repos ) ) {
+				$repo_fetch_error = $repos->get_error_message();
+			} else {
+				$repo_options = $repos;
+			}
+		} catch ( Throwable $e ) {
+			$token_available = false;
+		}
+
+		if ( '' !== $selected_repo_full && ! in_array( $selected_repo_full, $repo_options, true ) ) {
+			$repo_options[] = $selected_repo_full;
+		}
+		sort( $repo_options, SORT_NATURAL | SORT_FLAG_CASE );
 
 		?>
 		<div class="wrap">
@@ -145,88 +165,44 @@ final class WPGS_Admin {
 				<?php settings_fields( 'wpgs' ); ?>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row"><label for="wpgs_github_owner">GitHub owner</label></th>
-						<td><input class="regular-text" id="wpgs_github_owner" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_owner]" value="<?php echo esc_attr( (string) $settings['github_owner'] ); ?>" /></td>
+						<th scope="row"><label for="wpgs_pat_token">GitHub PAT token</label></th>
+						<td>
+							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_pat_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_token]" value="" />
+							<p class="description">Leave blank to keep the existing token. You can also define <code>WPGS_GITHUB_PAT</code> in <code>wp-config.php</code> (preferred).</p>
+						</td>
 					</tr>
+
+					<?php if ( ! $token_available ) : ?>
 					<tr>
-						<th scope="row"><label for="wpgs_github_repo">GitHub repo</label></th>
-						<td><input class="regular-text" id="wpgs_github_repo" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_repo]" value="<?php echo esc_attr( (string) $settings['github_repo'] ); ?>" /></td>
+						<th scope="row">Next step</th>
+						<td><p class="description">Save a PAT token first. Repo and branch settings will appear after PAT is configured.</p></td>
 					</tr>
+					<?php else : ?>
+				<tr>
+					<th scope="row"><label for="wpgs_github_repo_full">GitHub repo</label></th>
+					<td>
+						<select id="wpgs_github_repo_full" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_repo_full]" class="regular-text">
+							<option value="">Select a repository</option>
+								<?php foreach ( $repo_options as $repo_full ) : ?>
+									<option value="<?php echo esc_attr( $repo_full ); ?>" <?php selected( $repo_full, $selected_repo_full ); ?>><?php echo esc_html( $repo_full ); ?></option>
+								<?php endforeach; ?>
+							</select>
+								<?php if ( '' !== $repo_fetch_error ) : ?>
+									<p class="description">Could not load repos from GitHub: <?php echo esc_html( $repo_fetch_error ); ?></p>
+								<?php else : ?>
+									<p class="description">Only repositories you can push to are listed.</p>
+								<?php endif; ?>
+							</td>
+						</tr>
 					<tr>
 						<th scope="row"><label for="wpgs_branch">Branch</label></th>
 						<td><input class="regular-text" id="wpgs_branch" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[branch]" value="<?php echo esc_attr( (string) $settings['branch'] ); ?>" /></td>
 					</tr>
-
-					<tr>
-						<th scope="row">Auth mode</th>
-						<td>
-							<fieldset>
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_mode]" value="device_oauth" <?php checked( 'device_oauth', (string) $settings['auth_mode'] ); ?> /> Device Flow OAuth</label><br />
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[auth_mode]" value="pat" <?php checked( 'pat', (string) $settings['auth_mode'] ); ?> /> Fine-grained PAT</label>
-							</fieldset>
-						</td>
-					</tr>
-
-					<tr>
-						<th scope="row">PAT storage</th>
-						<td>
-							<fieldset>
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_storage]" value="wp_config" <?php checked( 'wp_config', (string) $settings['pat_storage'] ); ?> /> wp-config.php constant (preferred)</label><br />
-								<label><input type="radio" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_storage]" value="options" <?php checked( 'options', (string) $settings['pat_storage'] ); ?> /> Store in wp_options</label>
-							</fieldset>
-							<p class="description">To use wp-config storage, define: <code>define('WPGS_GITHUB_PAT','...');</code></p>
-						</td>
-					</tr>
-
-					<tr>
-						<th scope="row"><label for="wpgs_pat_token">PAT token (only if storing in wp_options)</label></th>
-						<td>
-							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_pat_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_token]" value="" />
-							<p class="description">Leave blank to keep the existing token.</p>
-						</td>
-					</tr>
+					<?php endif; ?>
 				</table>
 
 				<?php submit_button( 'Save settings' ); ?>
 			</form>
-
-			<h2>Device Flow OAuth</h2>
-			<?php if ( ! defined( 'WPGS_GITHUB_CLIENT_ID' ) ) : ?>
-				<p><strong>Missing configuration:</strong> define <code>WPGS_GITHUB_CLIENT_ID</code> in <code>wp-config.php</code>.</p>
-			<?php else : ?>
-				<p>
-					<?php if ( $oauth_connected ) : ?>
-						<strong>Status:</strong> Connected.
-					<?php else : ?>
-						<strong>Status:</strong> Not connected.
-					<?php endif; ?>
-				</p>
-
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;margin-right:8px;">
-					<input type="hidden" name="action" value="wpgs_oauth_start" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_oauth_start' ) ); ?>" />
-					<?php submit_button( 'Connect GitHub', 'secondary', 'submit', false ); ?>
-				</form>
-
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;margin-right:8px;">
-					<input type="hidden" name="action" value="wpgs_oauth_poll" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_oauth_poll' ) ); ?>" />
-					<?php submit_button( 'Complete connection (poll)', 'secondary', 'submit', false ); ?>
-				</form>
-
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;">
-					<input type="hidden" name="action" value="wpgs_oauth_disconnect" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_oauth_disconnect' ) ); ?>" />
-					<?php submit_button( 'Disconnect', 'delete', 'submit', false ); ?>
-				</form>
-
-				<?php if ( '' !== (string) $settings['user_code'] && '' !== (string) $settings['verification_uri'] ) : ?>
-					<p>Enter code <code><?php echo esc_html( (string) $settings['user_code'] ); ?></code> at <a href="<?php echo esc_url( (string) $settings['verification_uri'] ); ?>" target="_blank" rel="noreferrer noopener"><?php echo esc_html( (string) $settings['verification_uri'] ); ?></a>.</p>
-					<?php if ( '' !== (string) $settings['verification_uri_complete'] ) : ?>
-						<p>Direct link: <a href="<?php echo esc_url( (string) $settings['verification_uri_complete'] ); ?>" target="_blank" rel="noreferrer noopener"><?php echo esc_html( (string) $settings['verification_uri_complete'] ); ?></a></p>
-					<?php endif; ?>
-				<?php endif; ?>
-			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -300,7 +276,7 @@ final class WPGS_Admin {
 		$settings = WPGS_Settings::get();
 		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
 		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
-		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'wp-content-sync';
+		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
 		$token  = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
@@ -327,8 +303,24 @@ final class WPGS_Admin {
 		$content_changed = hash( 'sha256', $remote_content_n ) !== hash( 'sha256', $local_content_n );
 		$meta_changed    = hash( 'sha256', $remote_meta_n ) !== hash( 'sha256', $local_meta_n );
 
-		$content_diff = $content_changed ? wp_text_diff( $remote_content_n, $local_content_n, [ 'show_split_view' => true ] ) : '';
-		$meta_diff    = $meta_changed ? wp_text_diff( $remote_meta_n, $local_meta_n, [ 'show_split_view' => true ] ) : '';
+		$content_diff = $content_changed ? wp_text_diff(
+			$remote_content_n,
+			$local_content_n,
+			[
+				'show_split_view' => true,
+				'title_left'      => 'Remote',
+				'title_right'     => 'Local',
+			]
+		) : '';
+		$meta_diff    = $meta_changed ? wp_text_diff(
+			$remote_meta_n,
+			$local_meta_n,
+			[
+				'show_split_view' => true,
+				'title_left'      => 'Remote',
+				'title_right'     => 'Local',
+			]
+		) : '';
 
 		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
 		set_transient( $transient_key, [
@@ -370,7 +362,7 @@ final class WPGS_Admin {
 		$settings = WPGS_Settings::get();
 		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
 		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
-		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'wp-content-sync';
+		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
 		$token  = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
@@ -427,81 +419,417 @@ final class WPGS_Admin {
 
 		$content_changed = (bool) ( $diff['content_changed'] ?? false );
 		$meta_changed    = (bool) ( $diff['meta_changed'] ?? false );
+		$has_diff        = (bool) $diff;
+		$content_status_class = $has_diff ? ( $content_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
+		$meta_status_class    = $has_diff ? ( $meta_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
+		$post_type_obj = get_post_type_object( (string) $post->post_type );
+		$post_card_title = ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) && '' !== (string) $post_type_obj->labels->singular_name )
+			? (string) $post_type_obj->labels->singular_name
+			: ucfirst( (string) $post->post_type );
+		$repo_file_url   = '';
+		if ( $diff ) {
+			$repo_file_url = self::github_file_url_from_state(
+				[
+					'repo'         => (string) ( $diff['repo'] ?? '' ),
+					'branch'       => (string) ( $diff['branch'] ?? '' ),
+					'content_path' => (string) ( $diff['content_path'] ?? '' ),
+				]
+			);
+		}
 
 		?>
-		<div class="wrap">
+		<div class="wrap wpgs-diff-wrap">
 			<h1>WP Git Sync — Diff</h1>
-			<p>
-				<strong>Post:</strong> <?php echo esc_html( (string) $post->post_title ); ?>
-				(<?php echo esc_html( (string) $post->post_type ); ?> #<?php echo (int) $post_id; ?>)
-			</p>
-			<p>
-				<?php if ( $edit_link ) : ?>
-					<a class="button" href="<?php echo esc_url( $edit_link ); ?>">Back to editor</a>
-				<?php endif; ?>
-			</p>
+			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
+				<a id="wpgs-tab-overview-link" href="#wpgs-tab-overview" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-overview" aria-controls="wpgs-tab-overview" aria-selected="true">Overview</a>
+				<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
+				<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
+			</nav>
 
-			<h2>Actions</h2>
-			<div style="display:flex;gap:8px;flex-wrap:wrap;">
-				<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-					<input type="hidden" name="action" value="wpgs_check_post" />
-					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
-					<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
-				</form>
+				<section id="wpgs-tab-overview" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-overview-link">
+					<div class="wpgs-overview-grid">
+						<article class="wpgs-card">
+							<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
+							<p class="wpgs-kv">
+								<strong>Title:</strong> <?php echo esc_html( (string) $post->post_title ); ?><br />
+								<strong>ID:</strong> <code><?php echo (int) $post_id; ?></code>
+							</p>
+							<?php if ( $edit_link ) : ?>
+								<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
+						<?php endif; ?>
+					</article>
 
-				<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-					<input type="hidden" name="action" value="wpgs_export_post" />
-					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
-					<?php submit_button( 'Push local to GitHub (sync)', 'primary', 'submit', false ); ?>
-				</form>
+						<article class="wpgs-card">
+							<h2 class="wpgs-card-title">Latest check</h2>
+							<?php if ( ! $diff ) : ?>
+								<p class="description">No diff data yet. Click "Check for changes".</p>
+							<?php else : ?>
+								<dl class="wpgs-detail-grid">
+									<div class="wpgs-detail-row">
+										<dt>Checked at</dt>
+										<dd><?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Repo</dt>
+										<dd><code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Branch</dt>
+										<dd><code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Content path</dt>
+										<dd><code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code></dd>
+									</div>
+									<?php if ( '' !== $repo_file_url ) : ?>
+										<div class="wpgs-detail-row">
+											<dt>Repo file</dt>
+											<dd><a href="<?php echo esc_url( $repo_file_url ); ?>" target="_blank" rel="noopener noreferrer">Open on GitHub</a></dd>
+										</div>
+									<?php endif; ?>
+									<div class="wpgs-detail-row">
+										<dt>Meta path</dt>
+										<dd><code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Content changed</dt>
+										<dd><?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Meta changed</dt>
+										<dd><?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?></dd>
+									</div>
+								</dl>
+							<?php endif; ?>
+						</article>
+					</div>
 
-				<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
-					<input type="hidden" name="action" value="wpgs_pull_post" />
-					<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
-					<?php submit_button( 'Pull from GitHub (overwrite post)', 'delete', 'submit', false ); ?>
-				</form>
-			</div>
+				<article class="wpgs-card wpgs-actions-card">
+					<h2 class="wpgs-card-title">Actions</h2>
+					<div class="wpgs-action-row">
+						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+							<input type="hidden" name="action" value="wpgs_check_post" />
+							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
+							<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
+						</form>
 
-			<h2>Latest check</h2>
-			<?php if ( ! $diff ) : ?>
-				<p>No diff data yet. Click “Check for changes”.</p>
-			<?php else : ?>
-				<p>
-					<strong>Checked at:</strong> <?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?><br />
-					<strong>Repo:</strong> <code><?php echo esc_html( (string) ( $diff['repo'] ?? '' ) ); ?></code><br />
-					<strong>Branch:</strong> <code><?php echo esc_html( (string) ( $diff['branch'] ?? '' ) ); ?></code><br />
-					<strong>Content path:</strong> <code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code><br />
-					<strong>Meta path:</strong> <code><?php echo esc_html( (string) ( $diff['meta_path'] ?? '' ) ); ?></code>
-				</p>
-				<p>
-					<strong>Content changed:</strong> <?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?><br />
-					<strong>Meta changed:</strong> <?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?>
-				</p>
+						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+							<input type="hidden" name="action" value="wpgs_export_post" />
+							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post_id ) ); ?>" />
+							<?php submit_button( 'Push local to GitHub (sync)', 'primary', 'submit', false ); ?>
+						</form>
 
-				<h2>Content diff</h2>
-				<?php if ( ! $content_changed ) : ?>
-					<p>(no changes)</p>
+						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite the current editor content with the version from GitHub. Continue?');">
+							<input type="hidden" name="action" value="wpgs_pull_post" />
+							<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
+							<?php submit_button( 'Pull from GitHub (overwrite post)', 'delete', 'submit', false ); ?>
+						</form>
+					</div>
+				</article>
+			</section>
+
+			<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
+				<?php if ( ! $diff ) : ?>
+					<div class="wpgs-empty-panel">No diff data yet. Run "Check for changes" in the Overview tab.</div>
+				<?php elseif ( ! $content_changed ) : ?>
+					<div class="wpgs-empty-panel">(no changes)</div>
 				<?php else : ?>
-					<?php
-						// wp_text_diff() returns HTML.
-						echo (string) ( $diff['content_diff'] ?? '' );
-					?>
+					<div class="wpgs-diff-output wpgs-diff-surface">
+						<?php
+							// wp_text_diff() returns HTML.
+							echo (string) ( $diff['content_diff'] ?? '' );
+						?>
+					</div>
 				<?php endif; ?>
+			</section>
 
-				<h2>Meta diff</h2>
-				<?php if ( ! $meta_changed ) : ?>
-					<p>(no changes)</p>
+			<section id="wpgs-tab-meta" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-meta-link" hidden>
+				<?php if ( ! $diff ) : ?>
+					<div class="wpgs-empty-panel">No diff data yet. Run "Check for changes" in the Overview tab.</div>
+				<?php elseif ( ! $meta_changed ) : ?>
+					<div class="wpgs-empty-panel">(no changes)</div>
 				<?php else : ?>
-					<?php
-						echo (string) ( $diff['meta_diff'] ?? '' );
-					?>
+					<div class="wpgs-diff-output wpgs-diff-surface">
+						<?php echo (string) ( $diff['meta_diff'] ?? '' ); ?>
+					</div>
 				<?php endif; ?>
-			<?php endif; ?>
+			</section>
+			<style>
+				.wpgs-overview-grid {
+					display: grid;
+					grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+					gap: 14px;
+				}
+				.wpgs-card {
+					background: #fff;
+					border: 1px solid #dcdcde;
+					border-radius: 8px;
+					padding: 14px 16px;
+					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+				}
+				.wpgs-card-title {
+					margin: 0 0 10px;
+					font-size: 16px;
+					line-height: 1.4;
+				}
+					.wpgs-kv {
+						margin: 0;
+						line-height: 1.7;
+					}
+					.wpgs-detail-grid {
+						margin: 0;
+						display: grid;
+						gap: 8px;
+					}
+					.wpgs-detail-row {
+						display: grid;
+						grid-template-columns: 120px minmax(0, 1fr);
+						align-items: start;
+						column-gap: 10px;
+					}
+					.wpgs-detail-row dt {
+						margin: 0;
+						font-weight: 600;
+						color: #50575e;
+					}
+					.wpgs-detail-row dd {
+						margin: 0;
+					}
+					.wpgs-detail-row dd code {
+						word-break: break-word;
+						white-space: pre-wrap;
+					}
+					@media (max-width: 782px) {
+						.wpgs-detail-row {
+							grid-template-columns: 1fr;
+							row-gap: 2px;
+						}
+					}
+					.wpgs-actions-card {
+						margin-top: 14px;
+					}
+				.wpgs-action-row {
+					display: flex;
+					gap: 8px;
+					flex-wrap: wrap;
+				}
+				.wpgs-tab-panel {
+					margin-top: 16px;
+				}
+				.wpgs-tab-panel[hidden] {
+					display: none !important;
+				}
+				.wpgs-diff-output {
+					overflow-x: auto;
+				}
+				.wpgs-empty-panel {
+					background: #fff;
+					border: 1px solid #dcdcde;
+					border-radius: 8px;
+					padding: 12px 14px;
+				}
+				.wpgs-diff-surface {
+					background: #fff;
+					border: 1px solid #ccd0d4;
+					border-radius: 8px;
+					padding: 10px;
+					box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+				}
+				.wpgs-diff-surface .diff {
+					margin: 0;
+					background: #fff;
+					font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+				}
+				.wpgs-diff-surface .diff td,
+				.wpgs-diff-surface .diff th,
+				.wpgs-diff-surface .diff pre {
+					font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+					font-size: 12px;
+					line-height: 1.5;
+				}
+				.wpgs-diff-surface .diff pre {
+					margin: 0;
+					white-space: pre-wrap;
+					word-break: break-word;
+				}
+				.wpgs-tab-light {
+					display: inline-block;
+					width: 10px;
+					height: 10px;
+					margin-left: 6px;
+					border-radius: 50%;
+					vertical-align: middle;
+					border: 1px solid rgba(0, 0, 0, 0.18);
+				}
+				.wpgs-tab-light.is-green {
+					background: #46b450;
+				}
+				.wpgs-tab-light.is-red {
+					background: #dc3232;
+				}
+				.wpgs-tab-light.is-neutral {
+					background: #b5bcc2;
+				}
+			</style>
+			<script>
+				(function () {
+					var tabWrapper = document.getElementById('wpgs-diff-tabs');
+					if (!tabWrapper) {
+						return;
+					}
+					var tabs = tabWrapper.querySelectorAll('[data-tab]');
+					var panels = document.querySelectorAll('.wpgs-tab-panel');
+
+					function activate(tabId, updateHash) {
+						var hasMatch = false;
+						for (var x = 0; x < tabs.length; x++) {
+							if (tabs[x].getAttribute('data-tab') === tabId) {
+								hasMatch = true;
+								break;
+							}
+						}
+						if (!hasMatch && tabs.length) {
+							tabId = tabs[0].getAttribute('data-tab');
+						}
+
+						for (var i = 0; i < tabs.length; i++) {
+							var isActive = tabs[i].getAttribute('data-tab') === tabId;
+							tabs[i].classList.toggle('nav-tab-active', isActive);
+							tabs[i].setAttribute('aria-selected', isActive ? 'true' : 'false');
+						}
+
+						for (var j = 0; j < panels.length; j++) {
+							var panelIsActive = panels[j].id === tabId;
+							panels[j].classList.toggle('is-active', panelIsActive);
+							if (panelIsActive) {
+								panels[j].removeAttribute('hidden');
+							} else {
+								panels[j].setAttribute('hidden', 'hidden');
+							}
+						}
+
+						if (updateHash) {
+							window.location.hash = tabId;
+						}
+					}
+
+					for (var i = 0; i < tabs.length; i++) {
+						tabs[i].addEventListener('click', function (event) {
+							event.preventDefault();
+							activate(this.getAttribute('data-tab'), true);
+						});
+					}
+
+					var initialHash = window.location.hash ? window.location.hash.substring(1) : '';
+					if (initialHash) {
+						activate(initialHash, false);
+					}
+				})();
+			</script>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Fetch repos visible to the current PAT and return full-name options.
+	 *
+	 * Uses a short transient cache keyed by token hash to avoid repeated API calls.
+	 *
+	 * @param string $token GitHub PAT.
+	 * @return array<int,string>|WP_Error
+	 */
+	private static function fetch_repo_options( string $token ) {
+		$token = trim( $token );
+		if ( '' === $token ) {
+			return [];
+		}
+
+		$cache_key = 'wpgs_repo_opts_' . substr( sha1( $token ), 0, 16 );
+		$cached = get_transient( $cache_key );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$repos = [];
+		$page = 1;
+		$per_page = 100;
+
+		do {
+			$url = add_query_arg(
+				[
+					'per_page'    => (string) $per_page,
+					'page'        => (string) $page,
+					'affiliation' => 'owner,collaborator,organization_member',
+					'sort'        => 'full_name',
+					'direction'   => 'asc',
+				],
+				'https://api.github.com/user/repos'
+			);
+
+			$res = wp_remote_get(
+				$url,
+				[
+					'timeout' => 20,
+					'headers' => [
+						'Accept'               => 'application/vnd.github+json',
+						'X-GitHub-Api-Version' => '2022-11-28',
+						'User-Agent'           => 'WP-Git-Sync/' . ( defined( 'WPGS_VERSION' ) ? WPGS_VERSION : 'dev' ),
+						'Authorization'        => 'Bearer ' . $token,
+					],
+				]
+			);
+
+			if ( is_wp_error( $res ) ) {
+				return $res;
+			}
+
+			$code = (int) wp_remote_retrieve_response_code( $res );
+			$body = (string) wp_remote_retrieve_body( $res );
+			$data = json_decode( $body, true );
+			if ( ! is_array( $data ) ) {
+				$data = [];
+			}
+
+			if ( $code < 200 || $code >= 300 ) {
+				$message = isset( $data['message'] ) ? (string) $data['message'] : 'GitHub API error.';
+				return new WP_Error( 'wpgs_repo_fetch_failed', sprintf( 'GitHub API request failed (%d): %s', $code, $message ) );
+			}
+
+			$count = count( $data );
+			foreach ( $data as $row ) {
+				if ( ! is_array( $row ) || ! isset( $row['full_name'] ) || ! is_string( $row['full_name'] ) ) {
+					continue;
+				}
+
+				$can_push = false;
+				if ( isset( $row['permissions'] ) && is_array( $row['permissions'] ) ) {
+					$can_push = ! empty( $row['permissions']['push'] ) || ! empty( $row['permissions']['admin'] ) || ! empty( $row['permissions']['maintain'] );
+				}
+
+				if ( ! $can_push && isset( $row['role_name'] ) && is_string( $row['role_name'] ) ) {
+					$can_push = in_array( strtolower( $row['role_name'] ), [ 'admin', 'maintain', 'write' ], true );
+				}
+
+				if ( ! $can_push ) {
+					continue;
+				}
+
+				$full_name = trim( $row['full_name'] );
+				if ( '' !== $full_name && false !== strpos( $full_name, '/' ) ) {
+					$repos[] = $full_name;
+				}
+			}
+
+			$page++;
+		} while ( $count === $per_page && $page <= 10 );
+
+		$repos = array_values( array_unique( $repos ) );
+		sort( $repos, SORT_NATURAL | SORT_FLAG_CASE );
+		set_transient( $cache_key, $repos, 5 * MINUTE_IN_SECONDS );
+		return $repos;
 	}
 
 	/**
@@ -516,118 +844,37 @@ final class WPGS_Admin {
 	}
 
 	/**
-	 * Start Device Flow OAuth.
+	 * Build a GitHub file URL from sync state.
 	 *
-	 * @return void
+	 * @param array<string,string> $state Sync state.
+	 * @return string GitHub URL or empty string when not buildable.
 	 */
-	public static function handle_oauth_start(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
-		}
-		check_admin_referer( 'wpgs_oauth_start' );
+	private static function github_file_url_from_state( array $state ): string {
+		$repo    = trim( (string) ( $state['repo'] ?? '' ) );
+		$branch  = trim( (string) ( $state['branch'] ?? '' ) );
+		$path    = ltrim( (string) ( $state['content_path'] ?? '' ), '/' );
 
-		if ( ! defined( 'WPGS_GITHUB_CLIENT_ID' ) || ! is_string( WPGS_GITHUB_CLIENT_ID ) ) {
-			wp_die( 'WPGS_GITHUB_CLIENT_ID is not defined.' );
-		}
-
-		$settings = WPGS_Settings::get();
-		$scope = 'repo';
-		try {
-			$flow = WPGS_OAuth_Device::start( (string) WPGS_GITHUB_CLIENT_ID, $scope );
-			$settings['auth_mode'] = 'device_oauth';
-			$settings['device_code'] = (string) $flow['device_code'];
-			$settings['user_code'] = (string) $flow['user_code'];
-			$settings['verification_uri'] = (string) $flow['verification_uri'];
-			$settings['verification_uri_complete'] = (string) $flow['verification_uri_complete'];
-			$settings['device_code_expires_at'] = gmdate( 'c', time() + (int) $flow['expires_in'] );
-			$settings['device_poll_interval'] = (int) $flow['interval'];
-			update_option( WPGS_Settings::OPTION_KEY, $settings );
-			wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-settings', 'wpgs' => 'oauth_started' ], admin_url( 'options-general.php' ) ) );
-			exit;
-		} catch ( Throwable $e ) {
-			wp_die( esc_html( $e->getMessage() ) );
-		}
-	}
-
-	/**
-	 * Poll Device Flow OAuth to complete connection.
-	 *
-	 * @return void
-	 */
-	public static function handle_oauth_poll(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
-		}
-		check_admin_referer( 'wpgs_oauth_poll' );
-
-		if ( ! defined( 'WPGS_GITHUB_CLIENT_ID' ) || ! is_string( WPGS_GITHUB_CLIENT_ID ) ) {
-			wp_die( 'WPGS_GITHUB_CLIENT_ID is not defined.' );
+		if ( '' === $repo || '' === $branch || '' === $path || false === strpos( $repo, '/' ) ) {
+			return '';
 		}
 
-		$settings = WPGS_Settings::get();
-		$device_code = (string) $settings['device_code'];
-		if ( '' === trim( $device_code ) ) {
-			wp_die( 'No device_code found. Click Connect GitHub first.' );
+		$parts = explode( '/', $repo, 2 );
+		if ( 2 !== count( $parts ) || '' === $parts[0] || '' === $parts[1] ) {
+			return '';
 		}
 
-		try {
-			$tok = WPGS_OAuth_Device::poll( (string) WPGS_GITHUB_CLIENT_ID, $device_code );
-			$settings['auth_mode'] = 'device_oauth';
-			$settings['device_token'] = (string) $tok['access_token'];
-			if ( ! empty( $tok['refresh_token'] ) ) {
-				$settings['device_refresh_token'] = (string) $tok['refresh_token'];
-			}
-			if ( ! empty( $tok['expires_in'] ) ) {
-				$settings['token_expires_at'] = gmdate( 'c', time() + (int) $tok['expires_in'] );
-			}
-			if ( ! empty( $tok['refresh_token_expires_in'] ) ) {
-				$settings['refresh_expires_at'] = gmdate( 'c', time() + (int) $tok['refresh_token_expires_in'] );
-			}
+		$owner         = rawurlencode( $parts[0] );
+		$repo_name     = rawurlencode( $parts[1] );
+		$encoded_branch = rawurlencode( $branch );
+		$encoded_path   = str_replace( '%2F', '/', rawurlencode( $path ) );
 
-			// Clear device prompt fields.
-			$settings['device_code'] = '';
-			$settings['user_code'] = '';
-			$settings['verification_uri'] = '';
-			$settings['verification_uri_complete'] = '';
-			$settings['device_code_expires_at'] = '';
-
-			update_option( WPGS_Settings::OPTION_KEY, $settings );
-			wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-settings', 'wpgs' => 'oauth_connected' ], admin_url( 'options-general.php' ) ) );
-			exit;
-		} catch ( Throwable $e ) {
-			wp_die( esc_html( $e->getMessage() ) );
-		}
-	}
-
-	/**
-	 * Disconnect OAuth (clears stored tokens).
-	 *
-	 * @return void
-	 */
-	public static function handle_oauth_disconnect(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
-		}
-		check_admin_referer( 'wpgs_oauth_disconnect' );
-
-		$settings = WPGS_Settings::get();
-		foreach ( [
-			'device_token',
-			'device_refresh_token',
-			'token_expires_at',
-			'refresh_expires_at',
-			'device_code',
-			'user_code',
-			'verification_uri',
-			'verification_uri_complete',
-			'device_code_expires_at',
-		] as $k ) {
-			$settings[ $k ] = '';
-		}
-		update_option( WPGS_Settings::OPTION_KEY, $settings );
-
-		wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-settings', 'wpgs' => 'oauth_disconnected' ], admin_url( 'options-general.php' ) ) );
-		exit;
+		return sprintf(
+			'https://github.com/%s/%s/blob/%s/%s',
+			$owner,
+			$repo_name,
+			$encoded_branch,
+			$encoded_path
+		);
 	}
 
 	/**
@@ -651,6 +898,14 @@ final class WPGS_Admin {
 	public static function render_metabox( WP_Post $post ): void {
 		$state  = WPGS_Sync_Meta::get( (int) $post->ID );
 		$synced = WPGS_Sync_Meta::is_synced( (int) $post->ID );
+		$file_url = self::github_file_url_from_state( $state );
+		$diff_url = add_query_arg(
+			[
+				'page'    => 'wpgs-diff',
+				'post_id' => (int) $post->ID,
+			],
+			admin_url( 'tools.php' )
+		);
 
 		$status = $synced ? 'Synced' : 'Not synced yet';
 		?>
@@ -659,6 +914,9 @@ final class WPGS_Admin {
 			<p><strong>Repo:</strong><br /><code><?php echo esc_html( $state['repo'] ); ?></code></p>
 			<p><strong>Branch:</strong><br /><code><?php echo esc_html( $state['branch'] ); ?></code></p>
 			<p><strong>Content path:</strong><br /><code><?php echo esc_html( $state['content_path'] ); ?></code></p>
+			<?php if ( '' !== $file_url ) : ?>
+				<p><strong>Repo file:</strong><br /><a href="<?php echo esc_url( $file_url ); ?>" target="_blank" rel="noopener noreferrer">Open on GitHub</a></p>
+			<?php endif; ?>
 			<p><strong>Last commit:</strong><br /><code><?php echo esc_html( $state['last_commit'] ); ?></code></p>
 			<p><strong>Last synced:</strong><br /><?php echo esc_html( $state['last_synced_at'] ); ?></p>
 		<?php endif; ?>
@@ -669,12 +927,7 @@ final class WPGS_Admin {
 		<?php if ( ! current_user_can( 'manage_options' ) ) : ?>
 			<p class="description">Only administrators can export/sync content.</p>
 		<?php else : ?>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<input type="hidden" name="action" value="wpgs_check_post" />
-				<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
-				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post->ID ) ); ?>" />
-				<?php submit_button( 'Check for changes', 'secondary', 'submit', false ); ?>
-			</form>
+			<p><a class="button button-secondary" href="<?php echo esc_url( $diff_url ); ?>">Check for changes</a></p>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:6px;">
 				<input type="hidden" name="action" value="wpgs_export_post" />
