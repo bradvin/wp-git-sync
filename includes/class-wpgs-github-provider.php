@@ -35,15 +35,58 @@ final class WPGS_GitHub_Provider {
 	public function get_file_contents( string $branch, string $path ): string {
 		$path = ltrim( $path, '/' );
 		$data = $this->client->request( 'GET', $this->api( '/contents/' . str_replace( '%2F', '/', rawurlencode( $path ) ) . '?ref=' . rawurlencode( $branch ) ) );
-		$content = isset( $data['content'] ) ? (string) $data['content'] : '';
-		$encoding = isset( $data['encoding'] ) ? (string) $data['encoding'] : '';
+		$decoded = $this->decode_base64_payload( $data );
+		if ( null !== $decoded ) {
+			return $decoded;
+		}
+
+		// Fallback: some Contents API responses omit/limit inline content. In that
+		// case, decode via the Git Blob API using the file SHA.
+		$blob_sha = isset( $data['sha'] ) ? trim( (string) $data['sha'] ) : '';
+		if ( '' !== $blob_sha ) {
+			$blob = $this->client->request( 'GET', $this->api( '/git/blobs/' . rawurlencode( $blob_sha ) ) );
+			$decoded_blob = $this->decode_base64_payload( $blob );
+			if ( null !== $decoded_blob ) {
+				return $decoded_blob;
+			}
+
+			throw new RuntimeException(
+				sprintf(
+					'Unable to decode blob content from GitHub for "%s" (sha: %s).',
+					$path,
+					$blob_sha
+				)
+			);
+		}
+
+		$encoding = isset( $data['encoding'] ) ? (string) $data['encoding'] : 'unknown';
+		throw new RuntimeException(
+			sprintf(
+				'Unable to decode file from GitHub for "%s" (encoding: %s).',
+				$path,
+				$encoding
+			)
+		);
+	}
+
+	/**
+	 * Decode a GitHub base64 payload into raw file contents.
+	 *
+	 * @param array<string,mixed> $data API payload.
+	 * @return string|null Raw content, or null when unavailable/invalid.
+	 */
+	private function decode_base64_payload( array $data ): ?string {
+		$content  = isset( $data['content'] ) ? (string) $data['content'] : '';
+		$encoding = isset( $data['encoding'] ) ? strtolower( (string) $data['encoding'] ) : '';
 		if ( 'base64' !== $encoding || '' === $content ) {
-			throw new RuntimeException( 'Unable to decode file from GitHub.' );
+			return null;
 		}
-		$decoded = base64_decode( str_replace( "\n", '', $content ), true );
+
+		$decoded = base64_decode( str_replace( [ "\n", "\r" ], '', $content ), true );
 		if ( false === $decoded ) {
-			throw new RuntimeException( 'Base64 decode failed.' );
+			return null;
 		}
+
 		return (string) $decoded;
 	}
 	/**
