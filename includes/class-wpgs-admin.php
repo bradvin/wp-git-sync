@@ -645,7 +645,7 @@ final class WPGS_Admin {
 			<style>
 				.wpgs-overview-card {
 					margin-top: 16px;
-					max-width: 860px;
+					max-width: 1200px;
 					background: #fff;
 					border: 1px solid #dcdcde;
 					border-radius: 8px;
