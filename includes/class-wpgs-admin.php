@@ -600,6 +600,9 @@ final class WPGS_Admin {
 							<span id="wpgs-export-progress-fill"></span>
 						</div>
 						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
+						<p id="wpgs-export-resume-wrap" hidden>
+							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn">Resume Export</button>
+						</p>
 					</div>
 
 					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
@@ -701,6 +704,8 @@ final class WPGS_Admin {
 						var progressWrap = document.getElementById('wpgs-export-progress');
 						var progressFill = document.getElementById('wpgs-export-progress-fill');
 						var progressText = document.getElementById('wpgs-export-progress-text');
+						var resumeWrap = document.getElementById('wpgs-export-resume-wrap');
+						var resumeBtn = document.getElementById('wpgs-export-resume-btn');
 						var typeTabsNav = document.getElementById('wpgs-type-tabs-nav');
 						var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
 						var typePanels = document.querySelectorAll('.wpgs-type-panel');
@@ -709,6 +714,7 @@ final class WPGS_Admin {
 						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
 						var isRunning = false;
 						var currentScopeLabel = 'All post types';
+						var pendingResumeData = null;
 
 						function toBody(action, postType) {
 							var body = new URLSearchParams();
@@ -762,16 +768,24 @@ final class WPGS_Admin {
 
 						function finishRun(data) {
 							isRunning = false;
+							pendingResumeData = null;
 							setExportButtonsEnabled(true);
 							btn.textContent = 'Export All Posts';
+							if (resumeWrap) {
+								resumeWrap.hidden = true;
+							}
 							renderProgress(data);
 						}
 
 						function beginPollingWithCurrentState(data) {
 							isRunning = true;
+							pendingResumeData = null;
 							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
 							progressWrap.hidden = false;
+							if (resumeWrap) {
+								resumeWrap.hidden = true;
+							}
 							renderProgress(data);
 							window.setTimeout(pollStep, 200);
 						}
@@ -806,6 +820,10 @@ final class WPGS_Admin {
 							progressFill.style.width = '0%';
 							progressText.textContent = 'Starting export batch...';
 							currentScopeLabel = scopeLabel || 'All post types';
+							pendingResumeData = null;
+							if (resumeWrap) {
+								resumeWrap.hidden = true;
+							}
 							isRunning = true;
 							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
@@ -864,7 +882,16 @@ final class WPGS_Admin {
 							});
 						}
 
-						// Resume an active batch after page refresh/navigation.
+						if (resumeBtn) {
+							resumeBtn.addEventListener('click', function () {
+								if (!pendingResumeData || isRunning) {
+									return;
+								}
+								beginPollingWithCurrentState(pendingResumeData);
+							});
+						}
+
+						// Detect an active batch after refresh/navigation and offer manual resume.
 						request('wpgs_export_batch_status')
 							.then(function (res) {
 								if (!res.success) {
@@ -874,7 +901,14 @@ final class WPGS_Admin {
 								if (!data.active) {
 									return;
 								}
-								beginPollingWithCurrentState(data);
+								pendingResumeData = data;
+								progressWrap.hidden = false;
+								renderProgress(data);
+								progressText.textContent += ' Click Resume Export to continue.';
+								if (resumeWrap) {
+									resumeWrap.hidden = false;
+								}
+								setExportButtonsEnabled(false);
 							})
 							.catch(function () {
 								// Silent failure: manual start button remains available.
