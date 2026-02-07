@@ -168,7 +168,7 @@ final class WPGS_GitHub_Provider {
 	public function create_tree( ?string $base_tree_sha, array $tree ): string {
 		// GitHub accepts sha=null for deletions.
 		$payload = [ 'tree' => $tree ];
-		if ( is_string( $base_tree_sha ) && '' !== trim( $base_tree_sha ) ) {
+		if ( is_string( $base_tree_sha ) && '' !== trim( $base_tree_sha ) && self::EMPTY_TREE_SHA !== trim( $base_tree_sha ) ) {
 			$payload['base_tree'] = $base_tree_sha;
 		}
 
