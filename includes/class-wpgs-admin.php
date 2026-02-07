@@ -182,25 +182,27 @@ final class WPGS_Admin {
 	}
 
 	/**
-	 * Read all exportable post types currently present in the posts table.
+	 * Read selected post types from settings (validated against registered types).
 	 *
 	 * @return string[]
 	 */
-	private static function database_post_types(): array {
-		global $wpdb;
+	private static function included_post_types(): array {
+		$settings = WPGS_Settings::get();
+		$selected = isset( $settings['included_post_types'] ) && is_array( $settings['included_post_types'] )
+			? $settings['included_post_types']
+			: [];
+		$available = WPGS_Settings::available_post_type_options();
+		$allowed = array_fill_keys( array_keys( $available ), true );
 
-		$statuses = self::exportable_post_statuses();
-		$placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
-		$sql = "SELECT DISTINCT post_type
-			FROM {$wpdb->posts}
-			WHERE post_type <> ''
-			  AND post_status IN ($placeholders)
-			ORDER BY post_type ASC";
-		$prepared = $wpdb->prepare( $sql, $statuses );
-		$rows = $wpdb->get_col( $prepared );
-		$rows = is_array( $rows ) ? array_values( array_unique( array_map( 'strval', $rows ) ) ) : [];
+		$out = [];
+		foreach ( $selected as $post_type ) {
+			$slug = sanitize_key( (string) $post_type );
+			if ( '' !== $slug && isset( $allowed[ $slug ] ) ) {
+				$out[] = $slug;
+			}
+		}
 
-		return empty( $rows ) ? [ 'post', 'page' ] : $rows;
+		return array_values( array_unique( $out ) );
 	}
 
 	/**
@@ -303,7 +305,22 @@ final class WPGS_Admin {
 		// Validate token is available before queueing work.
 		WPGS_Auth::get_token( $settings );
 
-		$post_types = empty( $post_types ) ? self::database_post_types() : array_values( array_unique( array_map( 'strval', $post_types ) ) );
+		$included_post_types = self::included_post_types();
+		if ( empty( $included_post_types ) ) {
+			throw new RuntimeException( 'No included post types configured. Update settings first.' );
+		}
+
+		$post_types = empty( $post_types ) ? $included_post_types : array_values( array_unique( array_map( 'sanitize_key', array_map( 'strval', $post_types ) ) ) );
+		$allowed_post_types = array_fill_keys( $included_post_types, true );
+		$post_types = array_values(
+			array_filter(
+				$post_types,
+				static fn( string $slug ): bool => '' !== $slug && isset( $allowed_post_types[ $slug ] )
+			)
+		);
+		if ( empty( $post_types ) ) {
+			throw new RuntimeException( 'No included post types configured. Update settings first.' );
+		}
 		$post_ids = self::collect_export_post_ids( $post_types );
 		$total_steps = count( $post_ids ) + 1; // +1 finalization step.
 
@@ -409,7 +426,7 @@ final class WPGS_Admin {
 			try {
 					$post_types = isset( $batch['post_types'] ) && is_array( $batch['post_types'] )
 						? array_values( array_unique( array_map( 'strval', $batch['post_types'] ) ) )
-						: self::database_post_types();
+						: self::included_post_types();
 					$exporter->finalize_export_batch( $post_types );
 				$last_step = [
 					'type'    => 'finalize',
@@ -485,7 +502,8 @@ final class WPGS_Admin {
 			: '';
 		$state      = isset( $_GET['wpgs'] ) ? sanitize_key( (string) $_GET['wpgs'] ) : '';
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
-		$post_type_tabs = $repo_ready ? self::post_type_tab_data( self::database_post_types() ) : [];
+		$included_post_types = self::included_post_types();
+		$post_type_tabs = $repo_ready ? self::post_type_tab_data( $included_post_types ) : [];
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
@@ -525,6 +543,10 @@ final class WPGS_Admin {
 							<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
 						</p>
 					</div>
+
+					<?php if ( empty( $included_post_types ) ) : ?>
+						<p class="description">No Included Post Types are selected. <a href="<?php echo esc_url( $settings_url ); ?>">Choose at least one in Settings</a>.</p>
+					<?php endif; ?>
 
 					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
 						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -1063,6 +1085,10 @@ final class WPGS_Admin {
 			$repo_options[] = $selected_repo_full;
 		}
 		sort( $repo_options, SORT_NATURAL | SORT_FLAG_CASE );
+		$post_type_options = WPGS_Settings::available_post_type_options();
+		$included_post_types = isset( $settings['included_post_types'] ) && is_array( $settings['included_post_types'] )
+			? array_values( array_unique( array_map( 'sanitize_key', $settings['included_post_types'] ) ) )
+			: [];
 
 		?>
 		<div class="wrap">
@@ -1108,6 +1134,29 @@ final class WPGS_Admin {
 						<td><input class="regular-text" id="wpgs_branch" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[branch]" value="<?php echo esc_attr( (string) $settings['branch'] ); ?>" /></td>
 					</tr>
 					<?php endif; ?>
+					<tr>
+						<th scope="row">Included Post Types</th>
+						<td>
+							<?php if ( empty( $post_type_options ) ) : ?>
+								<p class="description">No post types are currently available.</p>
+							<?php else : ?>
+								<fieldset>
+									<?php foreach ( $post_type_options as $post_type_slug => $post_type_label ) : ?>
+										<label style="display:block;margin-bottom:4px;">
+											<input
+												type="checkbox"
+												name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[included_post_types][]"
+												value="<?php echo esc_attr( (string) $post_type_slug ); ?>"
+												<?php checked( in_array( (string) $post_type_slug, $included_post_types, true ) ); ?>
+											/>
+											<?php echo esc_html( sprintf( '%s (%s)', (string) $post_type_label, (string) $post_type_slug ) ); ?>
+										</label>
+									<?php endforeach; ?>
+								</fieldset>
+							<?php endif; ?>
+							<p class="description">Only selected post types appear on Overview and are exported by Export All Posts.</p>
+						</td>
+					</tr>
 				</table>
 
 				<?php submit_button( 'Save settings' ); ?>
@@ -1131,7 +1180,7 @@ final class WPGS_Admin {
 			$post_type = isset( $_POST['post_type'] ) ? sanitize_key( (string) wp_unslash( $_POST['post_type'] ) ) : '';
 			$post_types = [];
 			if ( '' !== $post_type ) {
-				$allowed = self::database_post_types();
+				$allowed = self::included_post_types();
 				if ( ! in_array( $post_type, $allowed, true ) ) {
 					wp_send_json_error( [ 'message' => 'Invalid post type selected for export.' ], 400 );
 				}

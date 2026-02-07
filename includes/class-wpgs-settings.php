@@ -62,6 +62,7 @@ final class WPGS_Settings {
 			'github_owner' => '',
 			'github_repo' => '',
 			'branch' => 'main',
+			'included_post_types' => [ 'post', 'page' ],
 		];
 	}
 
@@ -102,6 +103,19 @@ final class WPGS_Settings {
 		$out['github_owner'] = isset( $raw['github_owner'] ) ? sanitize_text_field( (string) $raw['github_owner'] ) : (string) ( $prev['github_owner'] ?? '' );
 		$out['github_repo']  = isset( $raw['github_repo'] ) ? sanitize_text_field( (string) $raw['github_repo'] ) : (string) ( $prev['github_repo'] ?? '' );
 		$out['branch']       = isset( $raw['branch'] ) ? sanitize_text_field( (string) $raw['branch'] ) : (string) ( $prev['branch'] ?? $out['branch'] );
+		$available_post_types = self::available_post_type_options();
+		$allowed_post_types = array_fill_keys( array_keys( $available_post_types ), true );
+		$included_post_types = isset( $raw['included_post_types'] ) && is_array( $raw['included_post_types'] )
+			? $raw['included_post_types']
+			: [];
+		$included = [];
+		foreach ( $included_post_types as $post_type ) {
+			$slug = sanitize_key( (string) $post_type );
+			if ( '' !== $slug && isset( $allowed_post_types[ $slug ] ) ) {
+				$included[] = $slug;
+			}
+		}
+		$out['included_post_types'] = array_values( array_unique( $included ) );
 
 		if ( isset( $raw['github_repo_full'] ) ) {
 			$repo_full = trim( (string) $raw['github_repo_full'] );
@@ -129,6 +143,35 @@ final class WPGS_Settings {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Return all selectable post types for settings UI.
+	 *
+	 * @return array<string,string> Map of post type slug => label.
+	 */
+	public static function available_post_type_options(): array {
+		$post_types = get_post_types( [ 'show_ui' => true ], 'objects' );
+		if ( ! is_array( $post_types ) ) {
+			return [];
+		}
+
+		$options = [];
+		foreach ( $post_types as $slug => $post_type ) {
+			$key = sanitize_key( (string) $slug );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			$label = $key;
+			if ( is_object( $post_type ) && isset( $post_type->labels->name ) && '' !== trim( (string) $post_type->labels->name ) ) {
+				$label = (string) $post_type->labels->name;
+			}
+			$options[ $key ] = $label;
+		}
+
+		asort( $options, SORT_NATURAL | SORT_FLAG_CASE );
+		return $options;
 	}
 
 	/**
