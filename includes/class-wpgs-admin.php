@@ -1684,9 +1684,11 @@ final class WPGS_Admin {
 		$post = $post_id ? get_post( $post_id ) : null;
 
 		if ( ! $post ) {
+			$overview_url = self::tools_page_url();
 			echo '<div class="wrap"><h1>WP Git Sync</h1>';
 			self::render_primary_tabs( 'diff' );
-			echo '<h2>Diff</h2><p>' . esc_html__( 'Missing or invalid post_id.', 'wpgs' ) . '</p></div>';
+			echo '<p>No post was selected for diff. Open the Overview tab, then click <strong>Diff</strong> on a post row.</p>';
+			echo '<p><a class="button" href="' . esc_url( $overview_url ) . '">Go to Overview</a></p></div>';
 			return;
 		}
 
@@ -1721,7 +1723,6 @@ final class WPGS_Admin {
 		<div class="wrap wpgs-diff-wrap">
 			<h1>WP Git Sync</h1>
 			<?php self::render_primary_tabs( 'diff', (int) $post_id ); ?>
-			<h2>Diff</h2>
 			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
 				<a id="wpgs-tab-overview-link" href="#wpgs-tab-overview" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-overview" aria-controls="wpgs-tab-overview" aria-selected="true">Overview</a>
 				<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
