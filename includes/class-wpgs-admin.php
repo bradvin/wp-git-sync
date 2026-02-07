@@ -30,6 +30,7 @@ final class WPGS_Admin {
 	public static function register(): void {
 		add_action( 'admin_menu', [ __CLASS__, 'admin_menu' ] );
 		add_action( 'admin_post_wpgs_export_all', [ __CLASS__, 'handle_export_all' ] );
+		add_action( 'admin_post_wpgs_setup_repo', [ __CLASS__, 'handle_setup_repo' ] );
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
 		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
 		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
@@ -146,18 +147,100 @@ final class WPGS_Admin {
 
 		$nonce      = wp_create_nonce( 'wpgs_export_all' );
 		$action_url = admin_url( 'admin-post.php' );
+		$settings   = WPGS_Settings::get();
+		$owner      = trim( (string) ( $settings['github_owner'] ?? '' ) );
+		$repo       = trim( (string) ( $settings['github_repo'] ?? '' ) );
+		$branch     = trim( (string) ( $settings['branch'] ?? 'main' ) );
+		$branch     = '' !== $branch ? $branch : 'main';
+		$repo_ready = '' !== $owner && '' !== $repo;
+		$repo_full  = $repo_ready ? ( $owner . '/' . $repo ) : '';
+		$repo_url   = $repo_ready
+			? sprintf( 'https://github.com/%s/%s', rawurlencode( $owner ), rawurlencode( $repo ) )
+			: '';
+		$state      = isset( $_GET['wpgs'] ) ? sanitize_key( (string) $_GET['wpgs'] ) : '';
+		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
 			<?php self::render_primary_tabs( 'overview' ); ?>
-			<p>Export WordPress content + meta into a GitHub repo/branch.</p>
+			<?php if ( 'repo_setup' === $state ) : ?>
+				<div class="notice notice-success inline"><p>Repository branch was prepared successfully.</p></div>
+			<?php elseif ( 'exported' === $state ) : ?>
+				<div class="notice notice-success inline"><p>Export completed successfully.</p></div>
+			<?php endif; ?>
 
-			<h2>Export</h2>
-			<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-				<input type="hidden" name="action" value="wpgs_export_all" />
-				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $nonce ); ?>" />
-				<?php submit_button( 'Export all posts/pages now', 'primary' ); ?>
-			</form>
+			<?php if ( ! $repo_ready ) : ?>
+				<div class="notice notice-warning inline">
+					<p>GitHub repo is not configured yet. <a href="<?php echo esc_url( $settings_url ); ?>">Setup a repo in Settings</a>.</p>
+				</div>
+			<?php else : ?>
+				<div class="wpgs-overview-card">
+					<h2>Repository</h2>
+					<p class="wpgs-repo-status">
+						<span class="wpgs-status-dot is-green" aria-hidden="true"></span>
+						<strong><?php echo esc_html( $repo_full ); ?></strong>
+						<span>on</span>
+						<code><?php echo esc_html( $branch ); ?></code>
+					</p>
+
+					<div class="wpgs-action-row">
+						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer">Open Repo</a></p>
+
+						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('Setup Repo will wipe all files on this branch. Continue?');">
+							<input type="hidden" name="action" value="wpgs_setup_repo" />
+							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_setup_repo' ) ); ?>" />
+							<?php submit_button( 'Setup Repo', 'delete', 'submit', false ); ?>
+						</form>
+
+						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+							<input type="hidden" name="action" value="wpgs_export_all" />
+							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $nonce ); ?>" />
+							<?php submit_button( 'Export All Posts', 'primary', 'submit', false ); ?>
+						</form>
+					</div>
+
+					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
+				</div>
+			<?php endif; ?>
+			<style>
+				.wpgs-overview-card {
+					margin-top: 16px;
+					max-width: 860px;
+					background: #fff;
+					border: 1px solid #dcdcde;
+					border-radius: 8px;
+					padding: 14px 16px;
+					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+				}
+				.wpgs-overview-card h2 {
+					margin-top: 0;
+				}
+				.wpgs-repo-status {
+					display: flex;
+					align-items: center;
+					gap: 8px;
+					margin: 0 0 10px;
+				}
+				.wpgs-status-dot {
+					display: inline-block;
+					width: 10px;
+					height: 10px;
+					border-radius: 50%;
+					border: 1px solid rgba(0, 0, 0, 0.18);
+				}
+				.wpgs-status-dot.is-green {
+					background: #46b450;
+				}
+				.wpgs-action-row {
+					display: flex;
+					gap: 8px;
+					flex-wrap: wrap;
+					align-items: center;
+				}
+				.wpgs-action-row p {
+					margin: 0;
+				}
+			</style>
 		</div>
 		<?php
 	}
@@ -266,6 +349,38 @@ final class WPGS_Admin {
 		try {
 			$exporter->export_all( [ 'post', 'page' ] );
 			wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs', 'wpgs' => 'exported' ], admin_url( 'tools.php' ) ) );
+			exit;
+		} catch ( Throwable $e ) {
+			wp_die( esc_html( $e->getMessage() ) );
+		}
+	}
+
+	/**
+	 * Handle repository setup action (create branch if needed, then wipe branch tree).
+	 *
+	 * @return void
+	 */
+	public static function handle_setup_repo(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions.' );
+		}
+		check_admin_referer( 'wpgs_setup_repo' );
+
+		$settings = WPGS_Settings::get();
+		$owner  = isset( $settings['github_owner'] ) ? trim( (string) $settings['github_owner'] ) : '';
+		$repo   = isset( $settings['github_repo'] ) ? trim( (string) $settings['github_repo'] ) : '';
+		$branch = isset( $settings['branch'] ) ? trim( (string) $settings['branch'] ) : 'main';
+		$branch = '' !== $branch ? $branch : 'main';
+		$token  = WPGS_Auth::get_token( $settings );
+
+		if ( '' === $owner || '' === $repo ) {
+			wp_die( 'GitHub owner/repo not configured.' );
+		}
+
+		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
+		try {
+			$provider->reset_branch_to_empty( $branch, 'Setup repository for WP Git Sync' );
+			wp_safe_redirect( self::tools_page_url( [ 'wpgs' => 'repo_setup' ] ) );
 			exit;
 		} catch ( Throwable $e ) {
 			wp_die( esc_html( $e->getMessage() ) );

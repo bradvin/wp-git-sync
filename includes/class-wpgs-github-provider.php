@@ -229,6 +229,42 @@ final class WPGS_GitHub_Provider {
 	}
 
 	/**
+	 * Ensure a branch exists and reset it to an empty tree.
+	 *
+	 * @param string $branch Branch name.
+	 * @param string $message Commit message.
+	 * @return void
+	 */
+	public function reset_branch_to_empty( string $branch, string $message ): void {
+		$branch = trim( $branch );
+		if ( '' === $branch ) {
+			throw new InvalidArgumentException( 'Branch is required.' );
+		}
+
+		$this->ensure_branch( $branch );
+
+		try {
+			$parent_commit = $this->get_ref_sha( $branch );
+		} catch ( Throwable $e ) {
+			if ( $this->is_empty_repo_error( $e ) ) {
+				$empty_tree = $this->create_tree( null, [] );
+				$new_commit = $this->create_commit( $message, $empty_tree, null );
+				try {
+					$this->create_ref( $branch, $new_commit );
+				} catch ( Throwable $ref_error ) {
+					$this->update_ref( $branch, $new_commit );
+				}
+				return;
+			}
+			throw $e;
+		}
+
+		$empty_tree = $this->create_tree( null, [] );
+		$new_commit = $this->create_commit( $message, $empty_tree, $parent_commit );
+		$this->update_ref( $branch, $new_commit );
+	}
+
+	/**
 	 * Commit/update multiple files (path => content) on a branch.
 	 *
 	 * Implementation uses Git Data API:
