@@ -18,17 +18,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class WPGS_Paths {
 	/**
-	 * Convert an arbitrary slug into a safe, non-empty filename slug.
-	 *
-	 * @param string $slug Raw slug.
-	 * @return string Sanitized slug, or "no-slug" when empty after sanitization.
-	 */
-	public static function safe_slug( string $slug ): string {
-		$slug = sanitize_title( $slug );
-		return $slug ? $slug : 'no-slug';
-	}
-
-	/**
 	 * Get the relative path to the mapping file (within the repo).
 	 *
 	 * @return string Relative path.
@@ -38,7 +27,7 @@ final class WPGS_Paths {
 	}
 
 	/**
-	 * Get the base content directory for a given post type.
+	 * Get the base directory for a given post type.
 	 *
 	 * Repo structure rule: the folder name must always be exactly the post type
 	 * key (e.g. "post", "page", "event").
@@ -46,52 +35,47 @@ final class WPGS_Paths {
 	 * @param string $post_type Post type key.
 	 * @return string Relative directory name.
 	 */
-	private static function content_dir_for_post_type( string $post_type ): string {
-		// Content files are grouped under posts/<post_type>/...
+	private static function dir_for_post_type( string $post_type ): string {
 		$post_type = sanitize_key( $post_type );
-		return 'posts/' . ( $post_type ? $post_type : 'unknown' );
-	}
-
-	/**
-	 * Get the base meta directory for a given post type.
-	 *
-	 * Meta files are grouped under meta/<post_type>/...
-	 *
-	 * @param string $post_type Post type key.
-	 * @return string Relative directory path.
-	 */
-	private static function meta_dir_for_post_type( string $post_type ): string {
-		$post_type = sanitize_key( $post_type );
-		return 'meta/' . ( $post_type ? $post_type : 'unknown' );
+		return $post_type ? $post_type : 'unknown';
 	}
 
 	/**
 	 * Get the relative path to the markdown content file for a post.
 	 *
-	 * Always places the post in a subfolder: <post_type>/<id>-<slug>.md
+	 * Written to: <post_type>/<id>.md
 	 *
 	 * @param string $post_type Post type key.
 	 * @param int    $post_id   WordPress post ID.
-	 * @param string $slug      Post slug.
 	 * @return string Relative content path.
 	 */
-	public static function post_relpath( string $post_type, int $post_id, string $slug ): string {
-		$slug = self::safe_slug( $slug );
-		return sprintf( '%s/%d-%s.md', self::content_dir_for_post_type( $post_type ), $post_id, $slug );
+	public static function content_relpath( string $post_type, int $post_id ): string {
+		return sprintf( '%s/%d.md', self::dir_for_post_type( $post_type ), $post_id );
+	}
+
+	/**
+	 * Get the relative path to the post-data JSON file for a post.
+	 *
+	 * Written to: <post_type>/<id>.json
+	 *
+	 * @param string $post_type Post type key.
+	 * @param int    $post_id   WordPress post ID.
+	 * @return string Relative post-data path.
+	 */
+	public static function post_data_relpath( string $post_type, int $post_id ): string {
+		return sprintf( '%s/%d.json', self::dir_for_post_type( $post_type ), $post_id );
 	}
 
 	/**
 	 * Get the relative path to the JSON meta file for a post.
 	 *
-	 * Written to: meta/<post_type>/<id>-<slug>.json
+	 * Written to: <post_type>/<id>.meta.json
 	 *
 	 * @param string $post_type Post type key.
 	 * @param int    $post_id   WordPress post ID.
-	 * @param string $slug      Post slug.
 	 * @return string Relative meta path.
 	 */
-	public static function meta_relpath( string $post_type, int $post_id, string $slug ): string {
-		$slug = self::safe_slug( $slug );
-		return sprintf( '%s/%d-%s.json', self::meta_dir_for_post_type( $post_type ), $post_id, $slug );
+	public static function meta_relpath( string $post_type, int $post_id ): string {
+		return sprintf( '%s/%d.meta.json', self::dir_for_post_type( $post_type ), $post_id );
 	}
 }

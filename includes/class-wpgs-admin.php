@@ -290,6 +290,7 @@ final class WPGS_Admin {
 
 		try {
 			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+			$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
 			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
 		} catch ( Throwable $e ) {
 			wp_die( esc_html( 'Unable to fetch remote files for diff: ' . $e->getMessage() ) );
@@ -297,15 +298,27 @@ final class WPGS_Admin {
 
 		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
 		$local_content_n  = WPGS_Diff::normalize_newlines( (string) $local['content'] );
+		$remote_post_n    = WPGS_Diff::normalize_newlines( (string) $remote_post );
+		$local_post_n     = WPGS_Diff::normalize_newlines( (string) $local['post_json'] );
 		$remote_meta_n    = WPGS_Diff::normalize_newlines( (string) $remote_meta );
 		$local_meta_n     = WPGS_Diff::normalize_newlines( (string) $local['meta_json'] );
 
 		$content_changed = hash( 'sha256', $remote_content_n ) !== hash( 'sha256', $local_content_n );
+		$post_changed    = hash( 'sha256', $remote_post_n ) !== hash( 'sha256', $local_post_n );
 		$meta_changed    = hash( 'sha256', $remote_meta_n ) !== hash( 'sha256', $local_meta_n );
 
 		$content_diff = $content_changed ? wp_text_diff(
 			$remote_content_n,
 			$local_content_n,
+			[
+				'show_split_view' => true,
+				'title_left'      => 'Remote',
+				'title_right'     => 'Local',
+			]
+		) : '';
+		$post_diff    = $post_changed ? wp_text_diff(
+			$remote_post_n,
+			$local_post_n,
 			[
 				'show_split_view' => true,
 				'title_left'      => 'Remote',
@@ -330,10 +343,13 @@ final class WPGS_Admin {
 			'post_id'         => (int) $post_id,
 			'post_type'       => (string) $post->post_type,
 			'content_path'    => (string) $paths['content_path'],
+			'post_path'       => (string) $paths['post_path'],
 			'meta_path'       => (string) $paths['meta_path'],
 			'content_changed' => (bool) $content_changed,
+			'post_changed'    => (bool) $post_changed,
 			'meta_changed'    => (bool) $meta_changed,
 			'content_diff'    => (string) $content_diff,
+			'post_diff'       => (string) $post_diff,
 			'meta_diff'       => (string) $meta_diff,
 		], 5 * MINUTE_IN_SECONDS );
 
@@ -481,6 +497,10 @@ final class WPGS_Admin {
 										<dt>Content path</dt>
 										<dd><code><?php echo esc_html( (string) ( $diff['content_path'] ?? '' ) ); ?></code></dd>
 									</div>
+									<div class="wpgs-detail-row">
+										<dt>Post path</dt>
+										<dd><code><?php echo esc_html( (string) ( $diff['post_path'] ?? '' ) ); ?></code></dd>
+									</div>
 									<?php if ( '' !== $repo_file_url ) : ?>
 										<div class="wpgs-detail-row">
 											<dt>Repo file</dt>
@@ -494,6 +514,10 @@ final class WPGS_Admin {
 									<div class="wpgs-detail-row">
 										<dt>Content changed</dt>
 										<dd><?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?></dd>
+									</div>
+									<div class="wpgs-detail-row">
+										<dt>Post changed</dt>
+										<dd><?php echo esc_html( ! empty( $diff['post_changed'] ) ? 'Yes' : 'No' ); ?></dd>
 									</div>
 									<div class="wpgs-detail-row">
 										<dt>Meta changed</dt>
@@ -914,6 +938,7 @@ final class WPGS_Admin {
 			<p><strong>Repo:</strong><br /><code><?php echo esc_html( $state['repo'] ); ?></code></p>
 			<p><strong>Branch:</strong><br /><code><?php echo esc_html( $state['branch'] ); ?></code></p>
 			<p><strong>Content path:</strong><br /><code><?php echo esc_html( $state['content_path'] ); ?></code></p>
+			<p><strong>Post path:</strong><br /><code><?php echo esc_html( $state['post_path'] ); ?></code></p>
 			<?php if ( '' !== $file_url ) : ?>
 				<p><strong>Repo file:</strong><br /><a href="<?php echo esc_url( $file_url ); ?>" target="_blank" rel="noopener noreferrer">Open on GitHub</a></p>
 			<?php endif; ?>

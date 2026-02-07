@@ -17,24 +17,29 @@ final class WPGS_Diff {
 	 * Compute the deterministic repo-relative paths for a post.
 	 *
 	 * @param WP_Post $post Post.
-	 * @return array{content_path:string,meta_path:string}
+	 * @return array{content_path:string,post_path:string,meta_path:string}
 	 */
 	public static function paths_for_post( WP_Post $post ): array {
-		$slug = $post->post_name ? (string) $post->post_name : (string) $post->ID;
 		return [
-			'content_path' => WPGS_Paths::post_relpath( (string) $post->post_type, (int) $post->ID, $slug ),
-			'meta_path'    => WPGS_Paths::meta_relpath( (string) $post->post_type, (int) $post->ID, $slug ),
+			'content_path' => WPGS_Paths::content_relpath( (string) $post->post_type, (int) $post->ID ),
+			'post_path'    => WPGS_Paths::post_data_relpath( (string) $post->post_type, (int) $post->ID ),
+			'meta_path'    => WPGS_Paths::meta_relpath( (string) $post->post_type, (int) $post->ID ),
 		];
 	}
 
 	/**
-	 * Build the local export content and meta JSON for a post.
+	 * Build the local export content, post-data JSON, and meta JSON for a post.
 	 *
 	 * @param WP_Post $post Post.
-	 * @return array{content:string,meta_json:string,meta:array<string,mixed>}
+	 * @return array{content:string,post_json:string,meta_json:string,post_data:array<string,mixed>,meta:array<string,mixed>}
 	 */
 	public static function build_local_payload( WP_Post $post ): array {
 		$content = (string) $post->post_content;
+		$post_data = get_post( $post->ID, ARRAY_A );
+		if ( ! is_array( $post_data ) ) {
+			$post_data = [];
+		}
+		unset( $post_data['post_content'] );
 
 		$all_meta = get_post_meta( $post->ID );
 		if ( ! is_array( $all_meta ) ) {
@@ -46,6 +51,10 @@ final class WPGS_Diff {
 			unset( $all_meta[ $k ] );
 		}
 
+		foreach ( self::meta_blacklist() as $k ) {
+			unset( $all_meta[ (string) $k ] );
+		}
+
 		/**
 		 * Filter exported post meta.
 		 *
@@ -54,26 +63,37 @@ final class WPGS_Diff {
 		 */
 		$all_meta = apply_filters( 'wpgs_export_postmeta', $all_meta, (int) $post->ID );
 
-		$meta = [
-			'post' => [
-				'ID'                => (int) $post->ID,
-				'post_type'         => (string) $post->post_type,
-				'post_status'       => (string) $post->post_status,
-				'post_title'        => (string) $post->post_title,
-				'post_name'         => (string) $post->post_name,
-				'post_date_gmt'     => (string) $post->post_date_gmt,
-				'post_modified_gmt' => (string) $post->post_modified_gmt,
-			],
-			'meta' => $all_meta,
-		];
-
-		$meta_json = self::stable_json( $meta ) . "\n";
+		$post_json = self::stable_json( $post_data ) . "\n";
+		$meta_json = self::stable_json( $all_meta ) . "\n";
 
 		return [
-			'content'  => $content,
-			'meta_json'=> $meta_json,
-			'meta'     => $meta,
+			'content'   => $content,
+			'post_json' => $post_json,
+			'meta_json' => $meta_json,
+			'post_data' => $post_data,
+			'meta'      => $all_meta,
 		];
+	}
+
+	/**
+	 * Post-meta keys excluded from export by default.
+	 *
+	 * @return string[]
+	 */
+	public static function meta_blacklist(): array {
+		$blacklist = [ '_edit_lock' ];
+
+		/**
+		 * Filter post-meta keys excluded from export.
+		 *
+		 * @param string[] $blacklist Meta keys to exclude.
+		 */
+		$blacklist = apply_filters( 'wpgs_export_postmeta_blacklist', $blacklist );
+		if ( ! is_array( $blacklist ) ) {
+			return [ '_edit_lock' ];
+		}
+
+		return array_values( array_unique( array_map( 'strval', $blacklist ) ) );
 	}
 
 	/**

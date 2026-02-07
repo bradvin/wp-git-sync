@@ -83,10 +83,12 @@ final class WPGS_Exporter {
 				'repo'          => $owner . '/' . $repo,
 				'branch'        => $branch,
 				'content_path'  => (string) $state['content_path'],
+				'post_path'     => (string) $state['post_path'],
 				'meta_path'     => (string) $state['meta_path'],
 				'last_commit'   => $commit_sha,
 				'last_synced_at'=> gmdate( 'c' ),
 				'content_hash'  => (string) $state['content_hash'],
+				'post_hash'     => (string) $state['post_hash'],
 				'meta_hash'     => (string) $state['meta_hash'],
 			] );
 		}
@@ -136,10 +138,12 @@ final class WPGS_Exporter {
 				'repo'           => $owner . '/' . $repo,
 				'branch'         => $branch,
 				'content_path'   => (string) $state['content_path'],
+				'post_path'      => (string) $state['post_path'],
 				'meta_path'      => (string) $state['meta_path'],
 				'last_commit'    => $commit_sha,
 				'last_synced_at' => gmdate( 'c' ),
 				'content_hash'   => (string) $state['content_hash'],
+				'post_hash'      => (string) $state['post_hash'],
 				'meta_hash'      => (string) $state['meta_hash'],
 			] );
 		}
@@ -235,11 +239,8 @@ final class WPGS_Exporter {
 					continue;
 				}
 				// Post removed.
-				if ( isset( $item['content_path'] ) && is_string( $item['content_path'] ) ) {
-					$paths_to_delete[] = $item['content_path'];
-				}
-				if ( isset( $item['meta_path'] ) && is_string( $item['meta_path'] ) ) {
-					$paths_to_delete[] = $item['meta_path'];
+				foreach ( $this->known_paths_from_mapping_item( $item ) as $mapped_path ) {
+					$paths_to_delete[] = $mapped_path;
 				}
 				unset( $mapping['items'][ (string) $id ] );
 			}
@@ -259,87 +260,99 @@ final class WPGS_Exporter {
 	 * @return void
 	 */
 	private function export_one_into_changeset( WP_Post $post, array &$mapping, array &$files_to_write, array &$paths_to_delete, array &$post_states ): void {
-		$slug = $post->post_name ? (string) $post->post_name : (string) $post->ID;
-		$content_rel = WPGS_Paths::post_relpath( (string) $post->post_type, (int) $post->ID, $slug );
-		$meta_rel    = WPGS_Paths::meta_relpath( (string) $post->post_type, (int) $post->ID, $slug );
+		$paths       = WPGS_Diff::paths_for_post( $post );
+		$content_rel = (string) $paths['content_path'];
+		$post_rel    = (string) $paths['post_path'];
+		$meta_rel    = (string) $paths['meta_path'];
+		$local       = WPGS_Diff::build_local_payload( $post );
+		$content     = (string) $local['content'];
+		$post_js     = (string) $local['post_json'];
+		$meta_js     = (string) $local['meta_json'];
+		$slug_raw    = $post->post_name ? (string) $post->post_name : (string) $post->ID;
+		$slug_safe   = sanitize_title( $slug_raw );
+		$slug_safe   = '' === $slug_safe ? 'no-slug' : $slug_safe;
 
 		$prev = isset( $mapping['items'][ (string) $post->ID ] ) ? $mapping['items'][ (string) $post->ID ] : null;
 		if ( is_array( $prev ) ) {
-			$prev_content = isset( $prev['content_path'] ) ? (string) $prev['content_path'] : '';
-			$prev_meta    = isset( $prev['meta_path'] ) ? (string) $prev['meta_path'] : '';
-			if ( $prev_content && $prev_content !== $content_rel ) {
-				$paths_to_delete[] = $prev_content;
-			}
-			if ( $prev_meta && $prev_meta !== $meta_rel ) {
-				$paths_to_delete[] = $prev_meta;
+			$current_paths = [ $content_rel, $post_rel, $meta_rel ];
+			foreach ( $this->known_paths_from_mapping_item( $prev ) as $mapped_path ) {
+				if ( ! in_array( $mapped_path, $current_paths, true ) ) {
+					$paths_to_delete[] = $mapped_path;
+				}
 			}
 		}
 
-		$content = (string) $post->post_content;
-		$meta    = $this->build_meta_payload( $post );
-		$meta_js = $this->stable_json( $meta ) . "\n";
+		// Remove old layout files if they differ from the current deterministic paths.
+		foreach ( $this->legacy_paths_for_post( $post ) as $legacy_path ) {
+			if ( ! in_array( $legacy_path, [ $content_rel, $post_rel, $meta_rel ], true ) ) {
+				$paths_to_delete[] = $legacy_path;
+			}
+		}
 
 		$files_to_write[ $content_rel ] = $content;
+		$files_to_write[ $post_rel ]    = $post_js;
 		$files_to_write[ $meta_rel ]    = $meta_js;
 
 		$post_states[ (int) $post->ID ] = [
 			'content_path' => $content_rel,
+			'post_path'    => $post_rel,
 			'meta_path'    => $meta_rel,
 			'content_hash' => hash( 'sha256', $content ),
+			'post_hash'    => hash( 'sha256', $post_js ),
 			'meta_hash'    => hash( 'sha256', $meta_js ),
 		];
 
 		$mapping['items'][ (string) $post->ID ] = array_merge(
 			is_array( $prev ) ? $prev : [],
 			[
-				'post_id'   => (int) $post->ID,
-				'post_type' => (string) $post->post_type,
-				'slug'      => (string) WPGS_Paths::safe_slug( $slug ),
+				'post_id'      => (int) $post->ID,
+				'post_type'    => (string) $post->post_type,
+				'slug'         => $slug_safe,
 				'content_path' => $content_rel,
+				'post_path'    => $post_rel,
 				'meta_path'    => $meta_rel,
-				'permalink'    => (string) get_permalink( (int) $post->ID ),
-				'post_title'   => (string) $post->post_title,
+				'permalink'     => (string) get_permalink( (int) $post->ID ),
+				'post_title'    => (string) $post->post_title,
 				'last_synced_at' => gmdate( 'c' ),
 			]
 		);
 	}
 
 	/**
-	 * Build meta payload for export.
+	 * Collect all known per-post paths from a mapping item.
+	 *
+	 * @param array<string,mixed> $item Mapping item.
+	 * @return string[]
+	 */
+	private function known_paths_from_mapping_item( array $item ): array {
+		$out = [];
+		foreach ( [ 'content_path', 'post_path', 'meta_path' ] as $key ) {
+			if ( isset( $item[ $key ] ) && is_string( $item[ $key ] ) ) {
+				$path = trim( (string) $item[ $key ] );
+				if ( '' !== $path ) {
+					$out[] = $path;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Old-layout paths for this post, kept for migration cleanup.
 	 *
 	 * @param WP_Post $post Post.
-	 * @return array<string,mixed>
+	 * @return string[]
 	 */
-	private function build_meta_payload( WP_Post $post ): array {
-		$all_meta = get_post_meta( $post->ID );
-		if ( ! is_array( $all_meta ) ) {
-			$all_meta = [];
-		}
-
-		// Avoid exporting our own internal meta.
-		foreach ( WPGS_Sync_Meta::internal_keys() as $k ) {
-			unset( $all_meta[ $k ] );
-		}
-
-		/**
-		 * Filter exported post meta.
-		 *
-		 * @param array<string,mixed> $all_meta All meta.
-		 * @param int                $post_id Post ID.
-		 */
-		$all_meta = apply_filters( 'wpgs_export_postmeta', $all_meta, (int) $post->ID );
+	private function legacy_paths_for_post( WP_Post $post ): array {
+		$post_type = sanitize_key( (string) $post->post_type );
+		$post_type = '' !== $post_type ? $post_type : 'unknown';
+		$slug_raw  = $post->post_name ? (string) $post->post_name : (string) $post->ID;
+		$slug_safe = sanitize_title( $slug_raw );
+		$slug_safe = '' === $slug_safe ? 'no-slug' : $slug_safe;
 
 		return [
-			'post' => [
-				'ID'                => (int) $post->ID,
-				'post_type'         => (string) $post->post_type,
-				'post_status'       => (string) $post->post_status,
-				'post_title'        => (string) $post->post_title,
-				'post_name'         => (string) $post->post_name,
-				'post_date_gmt'     => (string) $post->post_date_gmt,
-				'post_modified_gmt' => (string) $post->post_modified_gmt,
-			],
-			'meta' => $all_meta,
+			sprintf( 'posts/%s/%d-%s.md', $post_type, (int) $post->ID, $slug_safe ),
+			sprintf( 'meta/%s/%d-%s.json', $post_type, (int) $post->ID, $slug_safe ),
 		];
 	}
 
