@@ -1049,7 +1049,7 @@ final class WPGS_Admin {
 								}
 								var prevText = self.textContent;
 								self.disabled = true;
-								self.textContent = 'Syncing...';
+								self.textContent = 'Exporting...';
 
 								requestPostSync(postId)
 									.then(function (res) {
