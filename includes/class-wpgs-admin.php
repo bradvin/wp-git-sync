@@ -1766,7 +1766,7 @@ final class WPGS_Admin {
 
 			$list = self::normalize_meta_values_for_import( $values );
 			foreach ( $list as $value ) {
-				add_post_meta( $post_id, $meta_key, $value, false );
+				add_post_meta( $post_id, $meta_key, self::prepare_meta_value_for_storage( $value ), false );
 			}
 		}
 	}
@@ -1793,6 +1793,24 @@ final class WPGS_Admin {
 		}
 
 		return [ $values ];
+	}
+
+	/**
+	 * Prepare one meta value for storage without double-serializing payloads.
+	 *
+	 * WordPress metadata APIs will serialize arrays/objects and also re-serialize
+	 * strings that already look serialized. To preserve existing serialized
+	 * payloads from the repo, decode once before writing so core serializes once.
+	 *
+	 * @param mixed $value Meta value from repo payload.
+	 * @return mixed
+	 */
+	private static function prepare_meta_value_for_storage( $value ) {
+		if ( is_string( $value ) && is_serialized( $value ) ) {
+			return maybe_unserialize( $value );
+		}
+
+		return $value;
 	}
 
 	/**
