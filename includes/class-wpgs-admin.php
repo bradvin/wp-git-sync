@@ -599,6 +599,13 @@ final class WPGS_Admin {
 										<p class="description">No synced/error posts found for this post type.</p>
 									<?php else : ?>
 										<table class="widefat striped wpgs-sync-table">
+											<colgroup>
+												<col class="wpgs-col-post" />
+												<col class="wpgs-col-state" />
+												<col class="wpgs-col-synced" />
+												<col class="wpgs-col-error" />
+												<col class="wpgs-col-actions" />
+											</colgroup>
 											<thead>
 												<tr>
 													<th>Post</th>
@@ -692,6 +699,26 @@ final class WPGS_Admin {
 				}
 				.wpgs-sync-table {
 					margin-top: 8px;
+					table-layout: fixed;
+				}
+				.wpgs-sync-table .wpgs-col-post {
+					width: 42%;
+				}
+				.wpgs-sync-table .wpgs-col-state {
+					width: 10%;
+				}
+				.wpgs-sync-table .wpgs-col-synced {
+					width: 14%;
+				}
+				.wpgs-sync-table .wpgs-col-error {
+					width: 28%;
+				}
+				.wpgs-sync-table .wpgs-col-actions {
+					width: 6%;
+				}
+				.wpgs-sync-table td.wpgs-row-last-error {
+					white-space: normal;
+					word-break: break-word;
 				}
 				.wpgs-pill {
 					display: inline-block;
