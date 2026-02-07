@@ -629,7 +629,7 @@ final class WPGS_Admin {
 														<td class="wpgs-row-last-synced"><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
 														<td class="wpgs-row-last-error"><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
 														<td class="wpgs-row-actions">
-															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Sync</button>
+															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Export</button>
 														</td>
 													</tr>
 												<?php endforeach; ?>
