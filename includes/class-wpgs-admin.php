@@ -35,6 +35,7 @@ final class WPGS_Admin {
 		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
 		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_start', [ __CLASS__, 'ajax_export_batch_start' ] );
+		add_action( 'wp_ajax_wpgs_export_batch_status', [ __CLASS__, 'ajax_export_batch_status' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_step', [ __CLASS__, 'ajax_export_batch_step' ] );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notices' ] );
@@ -194,6 +195,11 @@ final class WPGS_Admin {
 			'succeeded'       => 0,
 			'failed'          => [],
 			'finalized'       => false,
+			'last_step'       => [
+				'type'    => 'start',
+				'ok'      => true,
+				'message' => 'Batch queued.',
+			],
 			'started_at'      => gmdate( 'c' ),
 			'updated_at'      => gmdate( 'c' ),
 		];
@@ -306,13 +312,16 @@ final class WPGS_Admin {
 		$batch['updated_at']      = gmdate( 'c' );
 
 		$done = ( empty( $batch['queue'] ) && ! empty( $batch['finalized'] ) );
+		$batch['last_step'] = $last_step;
 		if ( $done ) {
 			delete_transient( $key );
 		} else {
 			set_transient( $key, $batch, 2 * HOUR_IN_SECONDS );
 		}
 
-		return self::export_batch_progress_payload( $batch, $last_step, $done );
+		$payload = self::export_batch_progress_payload( $batch, $last_step, $done );
+		$payload['active'] = ! $done;
+		return $payload;
 	}
 
 	/**
@@ -517,6 +526,15 @@ final class WPGS_Admin {
 							renderProgress(data);
 						}
 
+						function beginPollingWithCurrentState(data) {
+							isRunning = true;
+							btn.disabled = true;
+							btn.textContent = 'Exporting...';
+							progressWrap.hidden = false;
+							renderProgress(data);
+							window.setTimeout(pollStep, 200);
+						}
+
 						function pollStep() {
 							request('wpgs_export_batch_step')
 								.then(function (res) {
@@ -525,11 +543,11 @@ final class WPGS_Admin {
 									}
 									var data = res.data || {};
 									renderProgress(data);
-									if (data.done) {
-										finishRun(data);
-										return;
-									}
-									window.setTimeout(pollStep, 350);
+										if (data.done) {
+											finishRun(data);
+											return;
+										}
+										window.setTimeout(pollStep, 350);
 								})
 								.catch(function (err) {
 									isRunning = false;
@@ -543,12 +561,12 @@ final class WPGS_Admin {
 							if (isRunning) {
 								return;
 							}
-							isRunning = true;
-							btn.disabled = true;
-							btn.textContent = 'Exporting...';
 							progressWrap.hidden = false;
 							progressFill.style.width = '0%';
 							progressText.textContent = 'Starting export batch...';
+							isRunning = true;
+							btn.disabled = true;
+							btn.textContent = 'Exporting...';
 
 							request('wpgs_export_batch_start')
 								.then(function (res) {
@@ -556,8 +574,7 @@ final class WPGS_Admin {
 										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
 									}
 									var data = res.data || {};
-									renderProgress(data);
-									window.setTimeout(pollStep, 200);
+									beginPollingWithCurrentState(data);
 								})
 								.catch(function (err) {
 									isRunning = false;
@@ -566,6 +583,22 @@ final class WPGS_Admin {
 									progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
 								});
 						});
+
+						// Resume an active batch after page refresh/navigation.
+						request('wpgs_export_batch_status')
+							.then(function (res) {
+								if (!res.success) {
+									return;
+								}
+								var data = res.data || {};
+								if (!data.active) {
+									return;
+								}
+								beginPollingWithCurrentState(data);
+							})
+							.catch(function () {
+								// Silent failure: manual start button remains available.
+							});
 					})();
 				</script>
 			<?php endif; ?>
@@ -684,10 +717,45 @@ final class WPGS_Admin {
 				],
 				false
 			);
+			$payload['active'] = true;
 			wp_send_json_success( $payload );
 		} catch ( Throwable $e ) {
 			wp_send_json_error( [ 'message' => (string) $e->getMessage() ], 500 );
 		}
+	}
+
+	/**
+	 * Get current export batch status via AJAX (for resume-on-refresh).
+	 *
+	 * @return void
+	 */
+	public static function ajax_export_batch_status(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+		}
+		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
+
+		$batch = get_transient( self::export_batch_transient_key() );
+		if ( ! is_array( $batch ) ) {
+			wp_send_json_success(
+				[
+					'active' => false,
+					'done'   => false,
+				]
+			);
+		}
+
+		$last_step = isset( $batch['last_step'] ) && is_array( $batch['last_step'] )
+			? $batch['last_step']
+			: [
+				'type'    => '',
+				'ok'      => true,
+				'message' => '',
+			];
+
+		$payload = self::export_batch_progress_payload( $batch, $last_step, false );
+		$payload['active'] = true;
+		wp_send_json_success( $payload );
 	}
 
 	/**
