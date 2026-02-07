@@ -1,28 +1,28 @@
 # WP Git Sync
 
-WP Git Sync is a WordPress plugin that syncs WordPress post content + meta into a GitHub repository branch using deterministic file paths.
+WP Git Sync is a WordPress plugin that syncs WordPress post content, post data, and post meta into a GitHub repository branch using deterministic file paths.
 
 > Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and uses **fine-grained PAT** auth.
 
 ## What it does
 
 - Configures a GitHub repo (`owner` + `repo`) + branch (default: `main`)
-- Exports posts/pages to deterministic files
+- Exports posts/pages to deterministic content/data/meta files
 - Maintains a mapping file at `wp-git-sync/mapping.json` in the repo
 - Generates/updates a deterministic repo-root `README.md` index in the repo
 - Writes changes via the GitHub **Git Data API** in a single commit per export
 - Adds a per-post metabox with sync status + “Sync this post now”
 
-## Deterministic file layout (final)
+## Deterministic file layout
 
 Folder naming rule: **folder name MUST always equal `post_type`**.
 
 - Mapping file:
   - `wp-git-sync/mapping.json`
-- Content files:
-  - `posts/<post_type>/<post_id>-<slug>.md`
-- Meta files:
-  - `meta/<post_type>/<post_id>-<slug>.json`
+- Per-post files (all in the same post-type folder):
+  - `<post_type>/<post_id>.md` (raw `post_content`)
+  - `<post_type>/<post_id>.json` (post table row data, excluding `post_content`)
+  - `<post_type>/<post_id>.meta.json` (post meta only)
 
 ## Repo root README index
 
@@ -69,8 +69,11 @@ Required permissions for the selected repo:
 
 ## Notes
 
-- Exported content is currently raw `post_content` (no block serialization transforms yet).
-- Meta export uses `get_post_meta( $post_id )` and includes a small post header.
+- Exported content is raw `post_content` (no block serialization transforms yet).
+- Post data export is sourced from `wp_posts` fields (excluding `post_content`).
+- Meta export is sourced from `get_post_meta( $post_id )` only.
+- Meta blacklist defaults to excluding `_edit_lock`.
+  - Additional excluded keys can be provided via the `wpgs_export_postmeta_blacklist` filter.
 
 ## Roadmap
 
