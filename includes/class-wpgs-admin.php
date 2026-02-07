@@ -34,6 +34,8 @@ final class WPGS_Admin {
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
 		add_action( 'admin_post_wpgs_check_post', [ __CLASS__, 'handle_check_post' ] );
 		add_action( 'admin_post_wpgs_pull_post', [ __CLASS__, 'handle_pull_post' ] );
+		add_action( 'wp_ajax_wpgs_export_batch_start', [ __CLASS__, 'ajax_export_batch_start' ] );
+		add_action( 'wp_ajax_wpgs_export_batch_step', [ __CLASS__, 'ajax_export_batch_step' ] );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notices' ] );
 	}
@@ -126,6 +128,194 @@ final class WPGS_Admin {
 	}
 
 	/**
+	 * Build user-scoped transient key for export-all batch state.
+	 *
+	 * @return string
+	 */
+	private static function export_batch_transient_key(): string {
+		return 'wpgs_export_batch_' . (int) get_current_user_id();
+	}
+
+	/**
+	 * Collect post IDs to export in deterministic order.
+	 *
+	 * @param string[] $post_types Post types.
+	 * @return int[]
+	 */
+	private static function collect_export_post_ids( array $post_types = [ 'post', 'page' ] ): array {
+		$post_ids = [];
+		foreach ( $post_types as $post_type ) {
+			$q = new WP_Query(
+				[
+					'post_type'              => (string) $post_type,
+					'post_status'            => [ 'publish', 'draft', 'pending', 'private' ],
+					'posts_per_page'         => -1,
+					'fields'                 => 'ids',
+					'orderby'                => 'ID',
+					'order'                  => 'ASC',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				]
+			);
+
+			if ( ! empty( $q->posts ) && is_array( $q->posts ) ) {
+				foreach ( $q->posts as $id ) {
+					$post_ids[] = (int) $id;
+				}
+			}
+		}
+
+		return array_values( array_unique( $post_ids ) );
+	}
+
+	/**
+	 * Start (or restart) an export-all batch for the current user.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function start_export_batch(): array {
+		$settings = WPGS_Settings::get();
+		$owner = trim( (string) ( $settings['github_owner'] ?? '' ) );
+		$repo  = trim( (string) ( $settings['github_repo'] ?? '' ) );
+		if ( '' === $owner || '' === $repo ) {
+			throw new RuntimeException( 'GitHub owner/repo not configured.' );
+		}
+		// Validate token is available before queueing work.
+		WPGS_Auth::get_token( $settings );
+
+		$post_ids = self::collect_export_post_ids( [ 'post', 'page' ] );
+		$total_steps = count( $post_ids ) + 1; // +1 finalization step.
+
+		$batch = [
+			'queue'           => $post_ids,
+			'processed_steps' => 0,
+			'total_steps'     => max( 1, $total_steps ),
+			'succeeded'       => 0,
+			'failed'          => [],
+			'finalized'       => false,
+			'started_at'      => gmdate( 'c' ),
+			'updated_at'      => gmdate( 'c' ),
+		];
+
+		set_transient( self::export_batch_transient_key(), $batch, 2 * HOUR_IN_SECONDS );
+		return $batch;
+	}
+
+	/**
+	 * Build a standardized payload for export-batch progress responses.
+	 *
+	 * @param array<string,mixed> $batch Batch state.
+	 * @param array<string,mixed> $last_step Last step result.
+	 * @param bool                $done Whether batch is complete.
+	 * @return array<string,mixed>
+	 */
+	private static function export_batch_progress_payload( array $batch, array $last_step, bool $done ): array {
+		$total = max( 1, (int) ( $batch['total_steps'] ?? 1 ) );
+		$processed = min( $total, (int) ( $batch['processed_steps'] ?? 0 ) );
+		$failed = isset( $batch['failed'] ) && is_array( $batch['failed'] ) ? $batch['failed'] : [];
+
+		return [
+			'done'      => $done,
+			'processed' => $processed,
+			'total'     => $total,
+			'remaining' => isset( $batch['queue'] ) && is_array( $batch['queue'] ) ? count( $batch['queue'] ) : 0,
+			'succeeded' => (int) ( $batch['succeeded'] ?? 0 ),
+			'failed'    => count( $failed ),
+			'percent'   => (int) floor( ( $processed / $total ) * 100 ),
+			'last_step' => $last_step,
+			'failures'  => $done ? array_values( $failed ) : [],
+		];
+	}
+
+	/**
+	 * Run one export-all batch step and return response payload.
+	 *
+	 * @return array<string,mixed>
+	 * @throws RuntimeException On missing batch state.
+	 */
+	private static function run_export_batch_step(): array {
+		$key = self::export_batch_transient_key();
+		$batch = get_transient( $key );
+		if ( ! is_array( $batch ) ) {
+			throw new RuntimeException( 'No active export batch. Start a new export first.' );
+		}
+
+		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
+		$last_step = [
+			'type'    => '',
+			'ok'      => true,
+			'message' => '',
+		];
+
+		$queue = isset( $batch['queue'] ) && is_array( $batch['queue'] ) ? $batch['queue'] : [];
+		if ( ! empty( $queue ) ) {
+			$post_id = (int) array_shift( $queue );
+			$batch['queue'] = $queue;
+			try {
+				$exporter->export_post( $post_id );
+				$batch['succeeded'] = (int) ( $batch['succeeded'] ?? 0 ) + 1;
+				$last_step = [
+					'type'    => 'post',
+					'ok'      => true,
+					'message' => sprintf( 'Exported post #%d', $post_id ),
+					'post_id' => $post_id,
+				];
+			} catch ( Throwable $e ) {
+				if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
+					$batch['failed'] = [];
+				}
+				$batch['failed'][] = [
+					'post_id' => $post_id,
+					'error'   => (string) $e->getMessage(),
+				];
+				$last_step = [
+					'type'    => 'post',
+					'ok'      => false,
+					'message' => sprintf( 'Failed exporting post #%d: %s', $post_id, (string) $e->getMessage() ),
+					'post_id' => $post_id,
+				];
+			}
+		} elseif ( empty( $batch['finalized'] ) ) {
+			try {
+				$exporter->finalize_export_batch( [ 'post', 'page' ] );
+				$last_step = [
+					'type'    => 'finalize',
+					'ok'      => true,
+					'message' => 'Finalized export batch cleanup.',
+				];
+			} catch ( Throwable $e ) {
+				if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
+					$batch['failed'] = [];
+				}
+				$batch['failed'][] = [
+					'post_id' => 0,
+					'error'   => (string) $e->getMessage(),
+				];
+				$last_step = [
+					'type'    => 'finalize',
+					'ok'      => false,
+					'message' => 'Finalize step failed: ' . (string) $e->getMessage(),
+				];
+			}
+
+			$batch['finalized'] = true;
+		}
+
+		$batch['processed_steps'] = (int) ( $batch['processed_steps'] ?? 0 ) + 1;
+		$batch['updated_at']      = gmdate( 'c' );
+
+		$done = ( empty( $batch['queue'] ) && ! empty( $batch['finalized'] ) );
+		if ( $done ) {
+			delete_transient( $key );
+		} else {
+			set_transient( $key, $batch, 2 * HOUR_IN_SECONDS );
+		}
+
+		return self::export_batch_progress_payload( $batch, $last_step, $done );
+	}
+
+	/**
 	 * Render the Tools → WP Git Sync page (unified tabs view).
 	 *
 	 * @return void
@@ -145,8 +335,9 @@ final class WPGS_Admin {
 			return;
 		}
 
-		$nonce      = wp_create_nonce( 'wpgs_export_all' );
 		$action_url = admin_url( 'admin-post.php' );
+		$ajax_url   = admin_url( 'admin-ajax.php' );
+		$batch_nonce = wp_create_nonce( 'wpgs_export_batch' );
 		$settings   = WPGS_Settings::get();
 		$owner      = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo       = trim( (string) ( $settings['github_repo'] ?? '' ) );
@@ -165,9 +356,11 @@ final class WPGS_Admin {
 			<?php self::render_primary_tabs( 'overview' ); ?>
 			<?php if ( 'repo_setup' === $state ) : ?>
 				<div class="notice notice-success inline"><p>Repository branch was prepared successfully.</p></div>
-			<?php elseif ( 'exported' === $state ) : ?>
-				<div class="notice notice-success inline"><p>Export completed successfully.</p></div>
-			<?php endif; ?>
+				<?php elseif ( 'exported' === $state ) : ?>
+					<div class="notice notice-success inline"><p>Export completed successfully.</p></div>
+				<?php elseif ( 'batch_started' === $state ) : ?>
+					<div class="notice notice-info inline"><p>Export batch started. Progress appears below.</p></div>
+				<?php endif; ?>
 
 			<?php if ( ! $repo_ready ) : ?>
 				<div class="notice notice-warning inline">
@@ -192,11 +385,16 @@ final class WPGS_Admin {
 							<?php submit_button( 'Setup Repo', 'delete', 'submit', false ); ?>
 						</form>
 
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-							<input type="hidden" name="action" value="wpgs_export_all" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $nonce ); ?>" />
-							<?php submit_button( 'Export All Posts', 'primary', 'submit', false ); ?>
-						</form>
+						<p>
+							<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
+						</p>
+					</div>
+
+					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
+						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+							<span id="wpgs-export-progress-fill"></span>
+						</div>
+						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
 					</div>
 
 					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
@@ -240,7 +438,137 @@ final class WPGS_Admin {
 				.wpgs-action-row p {
 					margin: 0;
 				}
+				.wpgs-export-progress {
+					margin-top: 12px;
+				}
+				.wpgs-export-progress-bar {
+					width: 100%;
+					max-width: 540px;
+					height: 10px;
+					background: #f0f0f1;
+					border: 1px solid #dcdcde;
+					border-radius: 999px;
+					overflow: hidden;
+				}
+				.wpgs-export-progress-bar span {
+					display: block;
+					height: 100%;
+					width: 0;
+					background: #2271b1;
+					transition: width 160ms linear;
+				}
 			</style>
+			<?php if ( $repo_ready ) : ?>
+				<script>
+					(function () {
+						var btn = document.getElementById('wpgs-export-all-btn');
+						if (!btn) {
+							return;
+						}
+
+						var progressWrap = document.getElementById('wpgs-export-progress');
+						var progressFill = document.getElementById('wpgs-export-progress-fill');
+						var progressText = document.getElementById('wpgs-export-progress-text');
+						var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
+						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
+						var isRunning = false;
+
+						function toBody(action) {
+							var body = new URLSearchParams();
+							body.append('action', action);
+							body.append('nonce', nonce);
+							return body.toString();
+						}
+
+						function request(action) {
+							return fetch(ajaxUrl, {
+								method: 'POST',
+								credentials: 'same-origin',
+								headers: {
+									'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+								},
+								body: toBody(action)
+							}).then(function (res) {
+								return res.json();
+							});
+						}
+
+						function renderProgress(data) {
+							var pct = typeof data.percent === 'number' ? data.percent : 0;
+							pct = Math.max(0, Math.min(100, pct));
+							progressFill.style.width = pct + '%';
+							var bar = progressWrap.querySelector('.wpgs-export-progress-bar');
+							if (bar) {
+								bar.setAttribute('aria-valuenow', String(pct));
+							}
+
+							var base = 'Progress: ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
+							if (data.last_step && data.last_step.message) {
+								base += data.last_step.message + ' ';
+							}
+							base += 'Succeeded: ' + data.succeeded + '. Failed: ' + data.failed + '.';
+							progressText.textContent = base;
+						}
+
+						function finishRun(data) {
+							isRunning = false;
+							btn.disabled = false;
+							btn.textContent = 'Export All Posts';
+							renderProgress(data);
+						}
+
+						function pollStep() {
+							request('wpgs_export_batch_step')
+								.then(function (res) {
+									if (!res.success) {
+										throw new Error((res.data && res.data.message) ? res.data.message : 'Batch step failed.');
+									}
+									var data = res.data || {};
+									renderProgress(data);
+									if (data.done) {
+										finishRun(data);
+										return;
+									}
+									window.setTimeout(pollStep, 350);
+								})
+								.catch(function (err) {
+									isRunning = false;
+									btn.disabled = false;
+									btn.textContent = 'Export All Posts';
+									progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
+								});
+						}
+
+						btn.addEventListener('click', function () {
+							if (isRunning) {
+								return;
+							}
+							isRunning = true;
+							btn.disabled = true;
+							btn.textContent = 'Exporting...';
+							progressWrap.hidden = false;
+							progressFill.style.width = '0%';
+							progressText.textContent = 'Starting export batch...';
+
+							request('wpgs_export_batch_start')
+								.then(function (res) {
+									if (!res.success) {
+										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
+									}
+									var data = res.data || {};
+									renderProgress(data);
+									window.setTimeout(pollStep, 200);
+								})
+								.catch(function (err) {
+									isRunning = false;
+									btn.disabled = false;
+									btn.textContent = 'Export All Posts';
+									progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
+								});
+						});
+					})();
+				</script>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -335,7 +663,53 @@ final class WPGS_Admin {
 	}
 
 	/**
-	 * Handle export-all admin action.
+	 * Start export batch via AJAX.
+	 *
+	 * @return void
+	 */
+	public static function ajax_export_batch_start(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+		}
+		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
+
+		try {
+			$batch = self::start_export_batch();
+			$payload = self::export_batch_progress_payload(
+				$batch,
+				[
+					'type'    => 'start',
+					'ok'      => true,
+					'message' => 'Batch queued.',
+				],
+				false
+			);
+			wp_send_json_success( $payload );
+		} catch ( Throwable $e ) {
+			wp_send_json_error( [ 'message' => (string) $e->getMessage() ], 500 );
+		}
+	}
+
+	/**
+	 * Process one export batch step via AJAX.
+	 *
+	 * @return void
+	 */
+	public static function ajax_export_batch_step(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+		}
+		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
+
+		try {
+			wp_send_json_success( self::run_export_batch_step() );
+		} catch ( Throwable $e ) {
+			wp_send_json_error( [ 'message' => (string) $e->getMessage() ], 500 );
+		}
+	}
+
+	/**
+	 * Handle export-all admin action (non-AJAX fallback).
 	 *
 	 * @return void
 	 */
@@ -345,10 +719,9 @@ final class WPGS_Admin {
 		}
 		check_admin_referer( 'wpgs_export_all' );
 
-		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
 		try {
-			$exporter->export_all( [ 'post', 'page' ] );
-			wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs', 'wpgs' => 'exported' ], admin_url( 'tools.php' ) ) );
+			self::start_export_batch();
+			wp_safe_redirect( self::tools_page_url( [ 'wpgs' => 'batch_started' ] ) );
 			exit;
 		} catch ( Throwable $e ) {
 			wp_die( esc_html( $e->getMessage() ) );

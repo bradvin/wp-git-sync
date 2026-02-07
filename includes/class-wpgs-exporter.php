@@ -150,6 +150,69 @@ final class WPGS_Exporter {
 	}
 
 	/**
+	 * Finalize export-all batch by removing stale mapping entries and files.
+	 *
+	 * This is intended to run once after per-post batch export steps complete.
+	 *
+	 * @param string[] $post_types List of post type slugs included in batch.
+	 * @return void
+	 */
+	public function finalize_export_batch( array $post_types = [ 'post', 'page' ] ): void {
+		[ $owner, $repo, $branch, $token ] = $this->resolve_target();
+		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
+
+		$mapping = $this->load_remote_mapping( $provider, $branch );
+		$paths_to_delete = [];
+		$allowed_statuses = [ 'publish', 'draft', 'pending', 'private' ];
+		$post_types = array_values( array_unique( array_map( 'strval', $post_types ) ) );
+		$mapping_changed = false;
+
+		if ( isset( $mapping['items'] ) && is_array( $mapping['items'] ) ) {
+			foreach ( $mapping['items'] as $id => $item ) {
+				if ( ! is_array( $item ) ) {
+					continue;
+				}
+
+				$item_post_type = (string) ( $item['post_type'] ?? '' );
+				if ( ! in_array( $item_post_type, $post_types, true ) ) {
+					continue;
+				}
+
+				$post = get_post( (int) $id );
+				$is_included = $post
+					&& (string) $post->post_type === $item_post_type
+					&& in_array( (string) $post->post_status, $allowed_statuses, true );
+				if ( $is_included ) {
+					continue;
+				}
+
+				foreach ( $this->known_paths_from_mapping_item( $item ) as $mapped_path ) {
+					$paths_to_delete[] = $mapped_path;
+				}
+				unset( $mapping['items'][ (string) $id ] );
+				$mapping_changed = true;
+			}
+		}
+
+		if ( ! $mapping_changed && empty( $paths_to_delete ) ) {
+			return;
+		}
+
+		$mapping['generated_at'] = gmdate( 'c' );
+		$mapping['version']      = defined( 'WPGS_VERSION' ) ? (string) WPGS_VERSION : 'dev';
+		$mapping['github_owner'] = $owner;
+		$mapping['github_repo']  = $repo;
+		$mapping['branch']       = $branch;
+
+		$files_to_write = [
+			WPGS_Paths::mapping_relpath() => $this->stable_json( $mapping ) . "\n",
+			'README.md'                   => $this->generate_repo_index_readme( $mapping ),
+		];
+
+		$this->commit_changeset( $provider, $branch, 'Finalize export-all batch via WP Git Sync', $files_to_write, $paths_to_delete );
+	}
+
+	/**
 	 * Resolve GitHub target.
 	 *
 	 * @return array{0:string,1:string,2:string,3:string} owner, repo, branch, token
