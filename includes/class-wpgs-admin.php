@@ -50,23 +50,6 @@ final class WPGS_Admin {
 			'wpgs',
 			[ __CLASS__, 'render_tools_page' ]
 		);
-
-		// Diff/management page for a single post.
-		add_management_page(
-			'WP Git Sync — Diff',
-			'WP Git Sync Diff',
-			'manage_options',
-			'wpgs-diff',
-			[ __CLASS__, 'render_diff_page' ]
-		);
-
-		add_options_page(
-			'WP Git Sync Settings',
-			'WP Git Sync',
-			'manage_options',
-			'wpgs-settings',
-			[ __CLASS__, 'render_settings_page' ]
-		);
 	}
 
 	/**
@@ -94,7 +77,55 @@ final class WPGS_Admin {
 	}
 
 	/**
-	 * Render the Tools → WP Git Sync page.
+	 * Read the active top-level tab.
+	 *
+	 * @return string One of: overview, diff, settings.
+	 */
+	private static function current_tab(): string {
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( (string) $_GET['tab'] ) : 'overview';
+		if ( ! in_array( $tab, [ 'overview', 'diff', 'settings' ], true ) ) {
+			return 'overview';
+		}
+		return $tab;
+	}
+
+	/**
+	 * Build the unified tools page URL.
+	 *
+	 * @param array<string,mixed> $args Additional query args.
+	 * @return string
+	 */
+	private static function tools_page_url( array $args = [] ): string {
+		$base_args = [ 'page' => 'wpgs' ];
+		return add_query_arg( array_merge( $base_args, $args ), admin_url( 'tools.php' ) );
+	}
+
+	/**
+	 * Render unified tabs for the single tools page.
+	 *
+	 * @param string $active_tab Active tab.
+	 * @param int    $post_id Optional post ID for diff deep-linking.
+	 * @return void
+	 */
+	private static function render_primary_tabs( string $active_tab, int $post_id = 0 ): void {
+		$overview_url = self::tools_page_url();
+		$diff_args = [ 'tab' => 'diff' ];
+		if ( $post_id > 0 ) {
+			$diff_args['post_id'] = $post_id;
+		}
+		$diff_url = self::tools_page_url( $diff_args );
+		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
+		?>
+		<nav class="nav-tab-wrapper" aria-label="WP Git Sync">
+			<a href="<?php echo esc_url( $overview_url ); ?>" class="nav-tab <?php echo 'overview' === $active_tab ? 'nav-tab-active' : ''; ?>">Overview</a>
+			<a href="<?php echo esc_url( $diff_url ); ?>" class="nav-tab <?php echo 'diff' === $active_tab ? 'nav-tab-active' : ''; ?>">Diff</a>
+			<a href="<?php echo esc_url( $settings_url ); ?>" class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">Settings</a>
+		</nav>
+		<?php
+	}
+
+	/**
+	 * Render the Tools → WP Git Sync page (unified tabs view).
 	 *
 	 * @return void
 	 */
@@ -103,11 +134,22 @@ final class WPGS_Admin {
 			wp_die( 'Insufficient permissions.' );
 		}
 
+		$tab = self::current_tab();
+		if ( 'diff' === $tab ) {
+			self::render_diff_page();
+			return;
+		}
+		if ( 'settings' === $tab ) {
+			self::render_settings_page();
+			return;
+		}
+
 		$nonce      = wp_create_nonce( 'wpgs_export_all' );
 		$action_url = admin_url( 'admin-post.php' );
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
+			<?php self::render_primary_tabs( 'overview' ); ?>
 			<p>Export WordPress content + meta into a GitHub repo/branch.</p>
 
 			<h2>Export</h2>
@@ -159,7 +201,9 @@ final class WPGS_Admin {
 
 		?>
 		<div class="wrap">
-			<h1>WP Git Sync Settings</h1>
+			<h1>WP Git Sync</h1>
+			<?php self::render_primary_tabs( 'settings' ); ?>
+			<h2>Settings</h2>
 
 			<form method="post" action="options.php">
 				<?php settings_fields( 'wpgs' ); ?>
@@ -353,7 +397,7 @@ final class WPGS_Admin {
 			'meta_diff'       => (string) $meta_diff,
 		], 5 * MINUTE_IN_SECONDS );
 
-		wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-diff', 'post_id' => (int) $post_id ], admin_url( 'tools.php' ) ) );
+		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
 		exit;
 	}
 
@@ -404,7 +448,7 @@ final class WPGS_Admin {
 		}
 
 		// Re-check after pulling so the diff page reflects current state.
-		wp_safe_redirect( add_query_arg( [ 'page' => 'wpgs-diff', 'post_id' => (int) $post_id, 'wpgs' => 'pulled' ], admin_url( 'tools.php' ) ) );
+		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id, 'wpgs' => 'pulled' ] ) );
 		exit;
 	}
 
@@ -422,7 +466,9 @@ final class WPGS_Admin {
 		$post = $post_id ? get_post( $post_id ) : null;
 
 		if ( ! $post ) {
-			echo '<div class="wrap"><h1>WP Git Sync — Diff</h1><p>' . esc_html__( 'Missing or invalid post_id.', 'wpgs' ) . '</p></div>';
+			echo '<div class="wrap"><h1>WP Git Sync</h1>';
+			self::render_primary_tabs( 'diff' );
+			echo '<h2>Diff</h2><p>' . esc_html__( 'Missing or invalid post_id.', 'wpgs' ) . '</p></div>';
 			return;
 		}
 
@@ -455,7 +501,9 @@ final class WPGS_Admin {
 
 		?>
 		<div class="wrap wpgs-diff-wrap">
-			<h1>WP Git Sync — Diff</h1>
+			<h1>WP Git Sync</h1>
+			<?php self::render_primary_tabs( 'diff', (int) $post_id ); ?>
+			<h2>Diff</h2>
 			<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
 				<a id="wpgs-tab-overview-link" href="#wpgs-tab-overview" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-overview" aria-controls="wpgs-tab-overview" aria-selected="true">Overview</a>
 				<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
@@ -923,12 +971,11 @@ final class WPGS_Admin {
 		$state  = WPGS_Sync_Meta::get( (int) $post->ID );
 		$synced = WPGS_Sync_Meta::is_synced( (int) $post->ID );
 		$file_url = self::github_file_url_from_state( $state );
-		$diff_url = add_query_arg(
+		$diff_url = self::tools_page_url(
 			[
-				'page'    => 'wpgs-diff',
+				'tab'     => 'diff',
 				'post_id' => (int) $post->ID,
-			],
-			admin_url( 'tools.php' )
+			]
 		);
 
 		$status = $synced ? 'Synced' : 'Not synced yet';
