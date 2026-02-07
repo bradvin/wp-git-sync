@@ -433,26 +433,52 @@ final class WPGS_Exporter {
 			$post_type = (string) ( $item['post_type'] ?? '' );
 			$title     = (string) ( $item['post_title'] ?? ( 'Post ' . $id ) );
 			$permalink = (string) ( $item['permalink'] ?? '' );
-			$path      = (string) ( $item['content_path'] ?? '' );
-			if ( '' === $permalink || '' === $path ) {
+			$content_path = (string) ( $item['content_path'] ?? '' );
+			$post_path    = (string) ( $item['post_path'] ?? '' );
+			$meta_path    = (string) ( $item['meta_path'] ?? '' );
+			if ( '' === $permalink || '' === $content_path ) {
 				continue;
 			}
-			$line = sprintf( '- [%s](%s) — [file](%s)', $this->md_escape( $title ), $permalink, $path );
+
+			$post_link    = sprintf( '[%s](%s)', $this->md_escape( $title ), $permalink );
+			$post_json    = '' !== $post_path ? sprintf( '[post.json](%s)', $post_path ) : '-';
+			$meta_json    = '' !== $meta_path ? sprintf( '[meta.json](%s)', $meta_path ) : '-';
+			$content_link = sprintf( '[content.md](%s)', $content_path );
+			$row = [
+				'sort' => strtolower( $title . '|' . $permalink ),
+				'line' => sprintf( '| %s | %s | %s | %s |', $post_link, $post_json, $meta_json, $content_link ),
+			];
 
 			if ( 'page' === $post_type ) {
-				$pages[] = $line;
+				$pages[] = $row;
 			} elseif ( 'post' === $post_type ) {
-				$posts[] = $line;
+				$posts[] = $row;
 			} else {
-				$other[ $post_type ][] = $line;
+				$other[ $post_type ][] = $row;
 			}
 		}
 
-		sort( $pages );
-		sort( $posts );
+		usort(
+			$pages,
+			static function ( array $a, array $b ): int {
+				return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
+			}
+		);
+		usort(
+			$posts,
+			static function ( array $a, array $b ): int {
+				return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
+			}
+		);
 		ksort( $other );
-		foreach ( $other as $pt => $lines ) {
-			sort( $other[ $pt ] );
+		foreach ( $other as $pt => $rows ) {
+			usort(
+				$rows,
+				static function ( array $a, array $b ): int {
+					return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
+				}
+			);
+			$other[ $pt ] = $rows;
 		}
 
 		$out   = [];
@@ -466,23 +492,49 @@ final class WPGS_Exporter {
 
 		$out[] = '## Pages';
 		$out[] = '';
-		$out   = array_merge( $out, $pages ?: [ '- (none)' ] );
+		$out[] = '| Post | Post JSON | Meta JSON | Content |';
+		$out[] = '| --- | --- | --- | --- |';
+		if ( empty( $pages ) ) {
+			$out[] = '| (none) | - | - | - |';
+		} else {
+			foreach ( $pages as $row ) {
+				$out[] = (string) ( $row['line'] ?? '' );
+			}
+		}
 		$out[] = '';
 
 		$out[] = '## Posts';
 		$out[] = '';
-		$out   = array_merge( $out, $posts ?: [ '- (none)' ] );
+		$out[] = '| Post | Post JSON | Meta JSON | Content |';
+		$out[] = '| --- | --- | --- | --- |';
+		if ( empty( $posts ) ) {
+			$out[] = '| (none) | - | - | - |';
+		} else {
+			foreach ( $posts as $row ) {
+				$out[] = (string) ( $row['line'] ?? '' );
+			}
+		}
 		$out[] = '';
 
 		$out[] = '## Other';
 		$out[] = '';
 		if ( empty( $other ) ) {
-			$out[] = '- (none)';
+			$out[] = '| Post | Post JSON | Meta JSON | Content |';
+			$out[] = '| --- | --- | --- | --- |';
+			$out[] = '| (none) | - | - | - |';
 		} else {
-			foreach ( $other as $pt => $lines ) {
+			foreach ( $other as $pt => $rows ) {
 				$out[] = '### ' . $pt;
 				$out[] = '';
-				$out   = array_merge( $out, $lines );
+				$out[] = '| Post | Post JSON | Meta JSON | Content |';
+				$out[] = '| --- | --- | --- | --- |';
+				if ( empty( $rows ) ) {
+					$out[] = '| (none) | - | - | - |';
+				} else {
+					foreach ( $rows as $row ) {
+						$out[] = (string) ( $row['line'] ?? '' );
+					}
+				}
 				$out[] = '';
 			}
 		}
@@ -527,6 +579,6 @@ final class WPGS_Exporter {
 	 * @return string
 	 */
 	private function md_escape( string $text ): string {
-		return str_replace( [ '[', ']' ], [ '\\[', '\\]' ], $text );
+		return str_replace( [ '\\', '|', '[', ']', "\n", "\r" ], [ '\\\\', '\|', '\\[', '\\]', ' ', '' ], $text );
 	}
 }
