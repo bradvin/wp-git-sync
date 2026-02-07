@@ -323,12 +323,15 @@ final class WPGS_Admin {
 			throw new RuntimeException( 'No included post types configured. Update settings first.' );
 		}
 		$post_ids = self::collect_export_post_ids( $post_types );
-		$total_steps = count( $post_ids ) + 1; // +1 finalization step.
+		$total_posts = count( $post_ids );
+		$total_steps = $total_posts + 1; // +1 finalization step.
 
 		$batch = [
 			'post_types'      => $post_types,
 			'scope_label'     => self::batch_scope_label( $post_types ),
 			'queue'           => $post_ids,
+			'total_posts'     => $total_posts,
+			'processed_posts' => 0,
 			'processed_steps' => 0,
 			'total_steps'     => max( 1, $total_steps ),
 			'succeeded'       => 0,
@@ -356,19 +359,25 @@ final class WPGS_Admin {
 	 * @return array<string,mixed>
 	 */
 	private static function export_batch_progress_payload( array $batch, array $last_step, bool $done ): array {
-		$total = max( 1, (int) ( $batch['total_steps'] ?? 1 ) );
-		$processed = min( $total, (int) ( $batch['processed_steps'] ?? 0 ) );
+		$total_posts = max( 0, (int) ( $batch['total_posts'] ?? 0 ) );
+		$processed_posts = min( $total_posts, max( 0, (int) ( $batch['processed_posts'] ?? 0 ) ) );
 		$failed = isset( $batch['failed'] ) && is_array( $batch['failed'] ) ? $batch['failed'] : [];
+		$percent = 0;
+		if ( $total_posts > 0 ) {
+			$percent = (int) floor( ( $processed_posts / $total_posts ) * 100 );
+		} elseif ( $done ) {
+			$percent = 100;
+		}
 
 		return [
 			'scope_label' => (string) ( $batch['scope_label'] ?? 'All post types' ),
 			'done'      => $done,
-			'processed' => $processed,
-			'total'     => $total,
+			'processed' => $processed_posts,
+			'total'     => $total_posts,
 			'remaining' => isset( $batch['queue'] ) && is_array( $batch['queue'] ) ? count( $batch['queue'] ) : 0,
 			'succeeded' => (int) ( $batch['succeeded'] ?? 0 ),
 			'failed'    => count( $failed ),
-			'percent'   => (int) floor( ( $processed / $total ) * 100 ),
+			'percent'   => $percent,
 			'last_step' => $last_step,
 			'failures'  => $done ? array_values( $failed ) : [],
 		];
@@ -423,6 +432,7 @@ final class WPGS_Admin {
 					'post_id' => $post_id,
 				];
 			}
+			$batch['processed_posts'] = (int) ( $batch['processed_posts'] ?? 0 ) + 1;
 		} elseif ( empty( $batch['finalized'] ) ) {
 			try {
 					$post_types = isset( $batch['post_types'] ) && is_array( $batch['post_types'] )
@@ -711,10 +721,10 @@ final class WPGS_Admin {
 					width: 12%;
 				}
 				.wpgs-sync-table .wpgs-col-error {
-					width: 24%;
+					width: 30%;
 				}
 				.wpgs-sync-table .wpgs-col-actions {
-					width: 16%;
+					width: 10%;
 				}
 				.wpgs-sync-table td.wpgs-row-last-error {
 					white-space: normal;
