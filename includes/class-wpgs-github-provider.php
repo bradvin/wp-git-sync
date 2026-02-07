@@ -76,10 +76,16 @@ final class WPGS_GitHub_Provider {
 	 * @return string|null Raw content, or null when unavailable/invalid.
 	 */
 	private function decode_base64_payload( array $data ): ?string {
-		$content  = isset( $data['content'] ) ? (string) $data['content'] : '';
 		$encoding = isset( $data['encoding'] ) ? strtolower( (string) $data['encoding'] ) : '';
-		if ( 'base64' !== $encoding || '' === $content ) {
+		if ( 'base64' !== $encoding ) {
 			return null;
+		}
+
+		$has_content = array_key_exists( 'content', $data );
+		$content     = $has_content ? (string) $data['content'] : '';
+		if ( ! $has_content ) {
+			$size = isset( $data['size'] ) ? (int) $data['size'] : -1;
+			return 0 === $size ? '' : null;
 		}
 
 		$decoded = base64_decode( str_replace( [ "\n", "\r" ], '', $content ), true );
