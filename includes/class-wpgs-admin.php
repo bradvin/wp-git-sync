@@ -389,6 +389,7 @@ final class WPGS_Admin {
 					'post_id' => $post_id,
 				];
 			} catch ( Throwable $e ) {
+				WPGS_Sync_Meta::set_error( $post_id, (string) $e->getMessage() );
 				if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
 					$batch['failed'] = [];
 				}
@@ -524,7 +525,22 @@ final class WPGS_Admin {
 						</p>
 					</div>
 
-					<?php if ( ! empty( $post_type_tabs ) ) : ?>
+					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
+						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+							<span id="wpgs-export-progress-fill"></span>
+						</div>
+						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
+						<p id="wpgs-export-resume-wrap" hidden>
+							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn">Resume Export</button>
+						</p>
+					</div>
+
+					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
+				</div>
+
+				<?php if ( ! empty( $post_type_tabs ) ) : ?>
+					<div class="wpgs-overview-card wpgs-post-types-card">
+						<h2>Post Types</h2>
 						<div class="wpgs-type-tabs-wrap">
 							<nav class="nav-tab-wrapper wpgs-type-tabs-nav" id="wpgs-type-tabs-nav" role="tablist" aria-label="Post Types">
 								<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
@@ -593,20 +609,8 @@ final class WPGS_Admin {
 								</section>
 							<?php endforeach; ?>
 						</div>
-					<?php endif; ?>
-
-					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
-						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-							<span id="wpgs-export-progress-fill"></span>
-						</div>
-						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
-						<p id="wpgs-export-resume-wrap" hidden>
-							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn">Resume Export</button>
-						</p>
 					</div>
-
-					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
-				</div>
+				<?php endif; ?>
 			<?php endif; ?>
 			<style>
 				.wpgs-overview-card {
@@ -1172,6 +1176,7 @@ final class WPGS_Admin {
 			wp_safe_redirect( get_edit_post_link( $post_id, 'raw' ) );
 			exit;
 		} catch ( Throwable $e ) {
+			WPGS_Sync_Meta::set_error( $post_id, (string) $e->getMessage() );
 			wp_die( esc_html( $e->getMessage() ) );
 		}
 	}
