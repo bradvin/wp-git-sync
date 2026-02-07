@@ -144,12 +144,13 @@ final class WPGS_Admin {
 	 * @return int[]
 	 */
 	private static function collect_export_post_ids( array $post_types = [ 'post', 'page' ] ): array {
+		$statuses = self::exportable_post_statuses();
 		$post_ids = [];
 		foreach ( $post_types as $post_type ) {
 			$q = new WP_Query(
 				[
 					'post_type'              => (string) $post_type,
-					'post_status'            => [ 'publish', 'draft', 'pending', 'private' ],
+					'post_status'            => $statuses,
 					'posts_per_page'         => -1,
 					'fields'                 => 'ids',
 					'orderby'                => 'ID',
@@ -171,11 +172,127 @@ final class WPGS_Admin {
 	}
 
 	/**
+	 * Post statuses included in export operations.
+	 *
+	 * @return string[]
+	 */
+	private static function exportable_post_statuses(): array {
+		return [ 'publish', 'draft', 'pending', 'private' ];
+	}
+
+	/**
+	 * Read all exportable post types currently present in the posts table.
+	 *
+	 * @return string[]
+	 */
+	private static function database_post_types(): array {
+		global $wpdb;
+
+		$statuses = self::exportable_post_statuses();
+		$placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+		$sql = "SELECT DISTINCT post_type
+			FROM {$wpdb->posts}
+			WHERE post_type <> ''
+			  AND post_status IN ($placeholders)
+			ORDER BY post_type ASC";
+		$prepared = $wpdb->prepare( $sql, $statuses );
+		$rows = $wpdb->get_col( $prepared );
+		$rows = is_array( $rows ) ? array_values( array_unique( array_map( 'strval', $rows ) ) ) : [];
+
+		return empty( $rows ) ? [ 'post', 'page' ] : $rows;
+	}
+
+	/**
+	 * Human-readable batch scope label for progress output.
+	 *
+	 * @param string[] $post_types Post types included in batch.
+	 * @return string
+	 */
+	private static function batch_scope_label( array $post_types ): string {
+		$post_types = array_values( array_unique( array_map( 'strval', $post_types ) ) );
+		if ( 1 === count( $post_types ) ) {
+			$obj = get_post_type_object( $post_types[0] );
+			if ( $obj && isset( $obj->labels->name ) && '' !== (string) $obj->labels->name ) {
+				return (string) $obj->labels->name;
+			}
+			return (string) $post_types[0];
+		}
+		return 'All post types';
+	}
+
+	/**
+	 * Build post-type tab data for the overview repository card.
+	 *
+	 * @param string[] $post_types Post types to include.
+	 * @return array<int,array{slug:string,label:string,count:int,rows:array<int,array{id:int,title:string,edit_link:string,synced:bool,last_synced_at:string,last_error:string}>}>
+	 */
+	private static function post_type_tab_data( array $post_types ): array {
+		$statuses = self::exportable_post_statuses();
+		$data = [];
+		foreach ( $post_types as $post_type ) {
+			$slug = sanitize_key( (string) $post_type );
+			if ( '' === $slug ) {
+				continue;
+			}
+
+			$obj = get_post_type_object( $slug );
+			$label = ( $obj && isset( $obj->labels->name ) && '' !== (string) $obj->labels->name )
+				? (string) $obj->labels->name
+				: $slug;
+
+			$q = new WP_Query(
+				[
+					'post_type'              => $slug,
+					'post_status'            => $statuses,
+					'posts_per_page'         => -1,
+					'fields'                 => 'ids',
+					'orderby'                => 'ID',
+					'order'                  => 'DESC',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => true,
+					'update_post_term_cache' => false,
+				]
+			);
+
+			$ids = is_array( $q->posts ) ? array_map( 'intval', $q->posts ) : [];
+			$rows = [];
+			foreach ( $ids as $id ) {
+				$state = WPGS_Sync_Meta::get( $id );
+				$synced = WPGS_Sync_Meta::is_synced( $id );
+				$last_error = trim( (string) ( $state['last_error'] ?? '' ) );
+				if ( ! $synced && '' === $last_error ) {
+					continue;
+				}
+
+				$title = get_the_title( $id );
+				$title = '' !== trim( (string) $title ) ? (string) $title : '(no title)';
+				$rows[] = [
+					'id'             => $id,
+					'title'          => $title,
+					'edit_link'      => (string) get_edit_post_link( $id, 'raw' ),
+					'synced'         => $synced,
+					'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
+					'last_error'     => $last_error,
+				];
+			}
+
+			$data[] = [
+				'slug'  => $slug,
+				'label' => $label,
+				'count' => count( $ids ),
+				'rows'  => $rows,
+			];
+		}
+
+		return $data;
+	}
+
+	/**
 	 * Start (or restart) an export-all batch for the current user.
 	 *
 	 * @return array<string,mixed>
 	 */
-	private static function start_export_batch(): array {
+	private static function start_export_batch( array $post_types = [] ): array {
 		$settings = WPGS_Settings::get();
 		$owner = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo  = trim( (string) ( $settings['github_repo'] ?? '' ) );
@@ -185,10 +302,13 @@ final class WPGS_Admin {
 		// Validate token is available before queueing work.
 		WPGS_Auth::get_token( $settings );
 
-		$post_ids = self::collect_export_post_ids( [ 'post', 'page' ] );
+		$post_types = empty( $post_types ) ? self::database_post_types() : array_values( array_unique( array_map( 'strval', $post_types ) ) );
+		$post_ids = self::collect_export_post_ids( $post_types );
 		$total_steps = count( $post_ids ) + 1; // +1 finalization step.
 
 		$batch = [
+			'post_types'      => $post_types,
+			'scope_label'     => self::batch_scope_label( $post_types ),
 			'queue'           => $post_ids,
 			'processed_steps' => 0,
 			'total_steps'     => max( 1, $total_steps ),
@@ -222,6 +342,7 @@ final class WPGS_Admin {
 		$failed = isset( $batch['failed'] ) && is_array( $batch['failed'] ) ? $batch['failed'] : [];
 
 		return [
+			'scope_label' => (string) ( $batch['scope_label'] ?? 'All post types' ),
 			'done'      => $done,
 			'processed' => $processed,
 			'total'     => $total,
@@ -284,7 +405,10 @@ final class WPGS_Admin {
 			}
 		} elseif ( empty( $batch['finalized'] ) ) {
 			try {
-				$exporter->finalize_export_batch( [ 'post', 'page' ] );
+					$post_types = isset( $batch['post_types'] ) && is_array( $batch['post_types'] )
+						? array_values( array_unique( array_map( 'strval', $batch['post_types'] ) ) )
+						: self::database_post_types();
+					$exporter->finalize_export_batch( $post_types );
 				$last_step = [
 					'type'    => 'finalize',
 					'ok'      => true,
@@ -359,6 +483,7 @@ final class WPGS_Admin {
 			: '';
 		$state      = isset( $_GET['wpgs'] ) ? sanitize_key( (string) $_GET['wpgs'] ) : '';
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
+		$post_type_tabs = $repo_ready ? self::post_type_tab_data( self::database_post_types() ) : [];
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
@@ -398,6 +523,77 @@ final class WPGS_Admin {
 							<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
 						</p>
 					</div>
+
+					<?php if ( ! empty( $post_type_tabs ) ) : ?>
+						<div class="wpgs-type-tabs-wrap">
+							<nav class="nav-tab-wrapper wpgs-type-tabs-nav" id="wpgs-type-tabs-nav" role="tablist" aria-label="Post Types">
+								<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
+									<a
+										href="#wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
+										class="nav-tab <?php echo 0 === $i ? 'nav-tab-active' : ''; ?>"
+										role="tab"
+										data-type-tab="<?php echo esc_attr( (string) $tab['slug'] ); ?>"
+										aria-selected="<?php echo 0 === $i ? 'true' : 'false'; ?>"
+									><?php echo esc_html( (string) $tab['label'] ); ?></a>
+								<?php endforeach; ?>
+							</nav>
+
+							<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
+								<section
+									id="wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
+									class="wpgs-type-panel"
+									role="tabpanel"
+									<?php echo 0 === $i ? '' : 'hidden'; ?>
+								>
+									<p><strong>Post count:</strong> <?php echo (int) $tab['count']; ?></p>
+									<p>
+										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>">
+											Export all <?php echo esc_html( (string) $tab['label'] ); ?>
+										</button>
+									</p>
+
+									<h3>Synced Or Error Posts</h3>
+									<?php if ( empty( $tab['rows'] ) ) : ?>
+										<p class="description">No synced/error posts found for this post type.</p>
+									<?php else : ?>
+										<table class="widefat striped wpgs-sync-table">
+											<thead>
+												<tr>
+													<th>Post</th>
+													<th>Sync state</th>
+													<th>Last synced</th>
+													<th>Last error</th>
+												</tr>
+											</thead>
+											<tbody>
+												<?php foreach ( $tab['rows'] as $row ) : ?>
+													<tr>
+														<td>
+															<?php if ( ! empty( $row['edit_link'] ) ) : ?>
+																<a href="<?php echo esc_url( (string) $row['edit_link'] ); ?>"><?php echo esc_html( (string) $row['title'] ); ?></a>
+															<?php else : ?>
+																<?php echo esc_html( (string) $row['title'] ); ?>
+															<?php endif; ?>
+															<code>#<?php echo (int) $row['id']; ?></code>
+														</td>
+														<td>
+															<?php if ( ! empty( $row['last_error'] ) ) : ?>
+																<span class="wpgs-pill is-error">Error</span>
+															<?php else : ?>
+																<span class="wpgs-pill is-synced">Synced</span>
+															<?php endif; ?>
+														</td>
+														<td><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
+														<td><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
+													</tr>
+												<?php endforeach; ?>
+											</tbody>
+										</table>
+									<?php endif; ?>
+								</section>
+							<?php endforeach; ?>
+						</div>
+					<?php endif; ?>
 
 					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
 						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -447,6 +643,33 @@ final class WPGS_Admin {
 				.wpgs-action-row p {
 					margin: 0;
 				}
+				.wpgs-type-tabs-wrap {
+					margin-top: 16px;
+				}
+				.wpgs-type-tabs-nav {
+					margin-bottom: 12px;
+				}
+				.wpgs-type-panel[hidden] {
+					display: none !important;
+				}
+				.wpgs-sync-table {
+					margin-top: 8px;
+				}
+				.wpgs-pill {
+					display: inline-block;
+					padding: 2px 8px;
+					border-radius: 999px;
+					font-size: 11px;
+					font-weight: 600;
+				}
+				.wpgs-pill.is-synced {
+					background: #edfaef;
+					color: #1f7a2f;
+				}
+				.wpgs-pill.is-error {
+					background: #fdecec;
+					color: #9a1f1f;
+				}
 				.wpgs-export-progress {
 					margin-top: 12px;
 				}
@@ -478,31 +701,49 @@ final class WPGS_Admin {
 						var progressWrap = document.getElementById('wpgs-export-progress');
 						var progressFill = document.getElementById('wpgs-export-progress-fill');
 						var progressText = document.getElementById('wpgs-export-progress-text');
+						var typeTabsNav = document.getElementById('wpgs-type-tabs-nav');
+						var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
+						var typePanels = document.querySelectorAll('.wpgs-type-panel');
+						var typeButtons = document.querySelectorAll('.wpgs-export-type-btn');
 						var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
 						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
 						var isRunning = false;
+						var currentScopeLabel = 'All post types';
 
-						function toBody(action) {
+						function toBody(action, postType) {
 							var body = new URLSearchParams();
 							body.append('action', action);
 							body.append('nonce', nonce);
+							if (postType) {
+								body.append('post_type', postType);
+							}
 							return body.toString();
 						}
 
-						function request(action) {
+						function request(action, postType) {
 							return fetch(ajaxUrl, {
 								method: 'POST',
 								credentials: 'same-origin',
 								headers: {
 									'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
 								},
-								body: toBody(action)
+								body: toBody(action, postType)
 							}).then(function (res) {
 								return res.json();
 							});
 						}
 
+						function setExportButtonsEnabled(enabled) {
+							btn.disabled = !enabled;
+							for (var i = 0; i < typeButtons.length; i++) {
+								typeButtons[i].disabled = !enabled;
+							}
+						}
+
 						function renderProgress(data) {
+							if (data.scope_label) {
+								currentScopeLabel = data.scope_label;
+							}
 							var pct = typeof data.percent === 'number' ? data.percent : 0;
 							pct = Math.max(0, Math.min(100, pct));
 							progressFill.style.width = pct + '%';
@@ -511,7 +752,7 @@ final class WPGS_Admin {
 								bar.setAttribute('aria-valuenow', String(pct));
 							}
 
-							var base = 'Progress: ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
+							var base = currentScopeLabel + ' export: ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
 							if (data.last_step && data.last_step.message) {
 								base += data.last_step.message + ' ';
 							}
@@ -521,14 +762,14 @@ final class WPGS_Admin {
 
 						function finishRun(data) {
 							isRunning = false;
-							btn.disabled = false;
+							setExportButtonsEnabled(true);
 							btn.textContent = 'Export All Posts';
 							renderProgress(data);
 						}
 
 						function beginPollingWithCurrentState(data) {
 							isRunning = true;
-							btn.disabled = true;
+							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
 							progressWrap.hidden = false;
 							renderProgress(data);
@@ -549,26 +790,27 @@ final class WPGS_Admin {
 										}
 										window.setTimeout(pollStep, 350);
 								})
-								.catch(function (err) {
-									isRunning = false;
-									btn.disabled = false;
-									btn.textContent = 'Export All Posts';
-									progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
-								});
+									.catch(function (err) {
+										isRunning = false;
+										setExportButtonsEnabled(true);
+										btn.textContent = 'Export All Posts';
+										progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
+									});
 						}
 
-						btn.addEventListener('click', function () {
+						function startBatch(postType, scopeLabel) {
 							if (isRunning) {
 								return;
 							}
 							progressWrap.hidden = false;
 							progressFill.style.width = '0%';
 							progressText.textContent = 'Starting export batch...';
+							currentScopeLabel = scopeLabel || 'All post types';
 							isRunning = true;
-							btn.disabled = true;
+							setExportButtonsEnabled(false);
 							btn.textContent = 'Exporting...';
 
-							request('wpgs_export_batch_start')
+							request('wpgs_export_batch_start', postType)
 								.then(function (res) {
 									if (!res.success) {
 										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
@@ -578,11 +820,49 @@ final class WPGS_Admin {
 								})
 								.catch(function (err) {
 									isRunning = false;
-									btn.disabled = false;
+									setExportButtonsEnabled(true);
 									btn.textContent = 'Export All Posts';
 									progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
 								});
+						}
+
+						btn.addEventListener('click', function () {
+							startBatch('', 'All post types');
 						});
+
+						for (var t = 0; t < typeButtons.length; t++) {
+							typeButtons[t].addEventListener('click', function () {
+								var postType = this.getAttribute('data-post-type') || '';
+								var label = this.textContent ? this.textContent.replace(/^Export all\s+/i, '') : postType;
+								startBatch(postType, label);
+							});
+						}
+
+						function activateTypeTab(slug) {
+							if (!typeTabLinks.length) {
+								return;
+							}
+							for (var i = 0; i < typeTabLinks.length; i++) {
+								var active = typeTabLinks[i].getAttribute('data-type-tab') === slug;
+								typeTabLinks[i].classList.toggle('nav-tab-active', active);
+								typeTabLinks[i].setAttribute('aria-selected', active ? 'true' : 'false');
+							}
+							for (var j = 0; j < typePanels.length; j++) {
+								var panelActive = typePanels[j].id === ('wpgs-type-tab-' + slug);
+								if (panelActive) {
+									typePanels[j].removeAttribute('hidden');
+								} else {
+									typePanels[j].setAttribute('hidden', 'hidden');
+								}
+							}
+						}
+
+						for (var n = 0; n < typeTabLinks.length; n++) {
+							typeTabLinks[n].addEventListener('click', function (event) {
+								event.preventDefault();
+								activateTypeTab(this.getAttribute('data-type-tab'));
+							});
+						}
 
 						// Resume an active batch after page refresh/navigation.
 						request('wpgs_export_batch_status')
@@ -707,7 +987,17 @@ final class WPGS_Admin {
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
 		try {
-			$batch = self::start_export_batch();
+			$post_type = isset( $_POST['post_type'] ) ? sanitize_key( (string) wp_unslash( $_POST['post_type'] ) ) : '';
+			$post_types = [];
+			if ( '' !== $post_type ) {
+				$allowed = self::database_post_types();
+				if ( ! in_array( $post_type, $allowed, true ) ) {
+					wp_send_json_error( [ 'message' => 'Invalid post type selected for export.' ], 400 );
+				}
+				$post_types = [ $post_type ];
+			}
+
+			$batch = self::start_export_batch( $post_types );
 			$payload = self::export_batch_progress_payload(
 				$batch,
 				[
