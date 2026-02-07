@@ -630,6 +630,7 @@ final class WPGS_Admin {
 														<td class="wpgs-row-last-error"><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
 														<td class="wpgs-row-actions">
 															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Export</button>
+															<a class="button button-small" href="<?php echo esc_url( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $row['id'] ] ) ); ?>">Check For Changes</a>
 														</td>
 													</tr>
 												<?php endforeach; ?>
