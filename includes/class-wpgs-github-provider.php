@@ -17,6 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class WPGS_GitHub_Provider {
 	/**
+	 * Canonical SHA-1 for an empty Git tree object.
+	 */
+	private const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+	/**
 	 * Fetch a file's raw contents from a branch using the Contents API.
 	 *
 	 * Side effects:
@@ -247,8 +252,7 @@ final class WPGS_GitHub_Provider {
 			$parent_commit = $this->get_ref_sha( $branch );
 		} catch ( Throwable $e ) {
 			if ( $this->is_empty_repo_error( $e ) ) {
-				$empty_tree = $this->create_tree( null, [] );
-				$new_commit = $this->create_commit( $message, $empty_tree, null );
+				$new_commit = $this->create_commit( $message, self::EMPTY_TREE_SHA, null );
 				try {
 					$this->create_ref( $branch, $new_commit );
 				} catch ( Throwable $ref_error ) {
@@ -259,8 +263,7 @@ final class WPGS_GitHub_Provider {
 			throw $e;
 		}
 
-		$empty_tree = $this->create_tree( null, [] );
-		$new_commit = $this->create_commit( $message, $empty_tree, $parent_commit );
+		$new_commit = $this->create_commit( $message, self::EMPTY_TREE_SHA, $parent_commit );
 		$this->update_ref( $branch, $new_commit );
 	}
 
