@@ -38,6 +38,7 @@ final class WPGS_Admin {
 		add_action( 'wp_ajax_wpgs_export_batch_status', [ __CLASS__, 'ajax_export_batch_status' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_step', [ __CLASS__, 'ajax_export_batch_step' ] );
 		add_action( 'wp_ajax_wpgs_export_batch_stop', [ __CLASS__, 'ajax_export_batch_stop' ] );
+		add_action( 'wp_ajax_wpgs_export_post_ajax', [ __CLASS__, 'ajax_export_post' ] );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'register_metabox' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notices' ] );
 	}
@@ -604,11 +605,12 @@ final class WPGS_Admin {
 													<th>Sync state</th>
 													<th>Last synced</th>
 													<th>Last error</th>
+													<th>Actions</th>
 												</tr>
 											</thead>
 											<tbody>
 												<?php foreach ( $tab['rows'] as $row ) : ?>
-													<tr>
+													<tr data-post-id="<?php echo (int) $row['id']; ?>">
 														<td>
 															<?php if ( ! empty( $row['edit_link'] ) ) : ?>
 																<a href="<?php echo esc_url( (string) $row['edit_link'] ); ?>"><?php echo esc_html( (string) $row['title'] ); ?></a>
@@ -617,15 +619,18 @@ final class WPGS_Admin {
 															<?php endif; ?>
 															<code>#<?php echo (int) $row['id']; ?></code>
 														</td>
-														<td>
+														<td class="wpgs-row-state">
 															<?php if ( ! empty( $row['last_error'] ) ) : ?>
-																<span class="wpgs-pill is-error">Error</span>
+																<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>
 															<?php else : ?>
-																<span class="wpgs-pill is-synced">Synced</span>
+																<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>
 															<?php endif; ?>
 														</td>
-														<td><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
-														<td><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
+														<td class="wpgs-row-last-synced"><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
+														<td class="wpgs-row-last-error"><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
+														<td class="wpgs-row-actions">
+															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Sync</button>
+														</td>
 													</tr>
 												<?php endforeach; ?>
 											</tbody>
@@ -747,6 +752,7 @@ final class WPGS_Admin {
 						var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
 						var typePanels = document.querySelectorAll('.wpgs-type-panel');
 						var typeButtons = document.querySelectorAll('.wpgs-export-type-btn');
+						var syncButtons = document.querySelectorAll('.wpgs-sync-post-btn');
 						var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
 						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
 						var isRunning = false;
@@ -780,10 +786,30 @@ final class WPGS_Admin {
 							});
 						}
 
+						function requestPostSync(postId) {
+							var body = new URLSearchParams();
+							body.append('action', 'wpgs_export_post_ajax');
+							body.append('nonce', nonce);
+							body.append('post_id', String(postId));
+							return fetch(ajaxUrl, {
+								method: 'POST',
+								credentials: 'same-origin',
+								headers: {
+									'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+								},
+								body: body.toString()
+							}).then(function (res) {
+								return res.json();
+							});
+						}
+
 						function setExportButtonsEnabled(enabled) {
 							btn.disabled = !enabled;
 							for (var i = 0; i < typeButtons.length; i++) {
 								typeButtons[i].disabled = !enabled;
+							}
+							for (var j = 0; j < syncButtons.length; j++) {
+								syncButtons[j].disabled = !enabled;
 							}
 						}
 
@@ -827,6 +853,31 @@ final class WPGS_Admin {
 							}
 							base += 'Succeeded: ' + data.succeeded + '. Failed: ' + data.failed + '.';
 							progressText.textContent = base;
+						}
+
+						function setRowSyncState(postId, state) {
+							var row = document.querySelector('tr[data-post-id="' + String(postId) + '"]');
+							if (!row) {
+								return;
+							}
+							var stateCell = row.querySelector('.wpgs-row-state');
+							var syncedCell = row.querySelector('.wpgs-row-last-synced');
+							var errorCell = row.querySelector('.wpgs-row-last-error');
+							var hasError = state && state.last_error;
+							var hasSyncedField = state && Object.prototype.hasOwnProperty.call(state, 'last_synced_at');
+							var hasErrorField = state && Object.prototype.hasOwnProperty.call(state, 'last_error');
+
+							if (stateCell) {
+								stateCell.innerHTML = hasError
+									? '<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>'
+									: '<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>';
+							}
+							if (syncedCell && hasSyncedField) {
+								syncedCell.textContent = state && state.last_synced_at ? String(state.last_synced_at) : '—';
+							}
+							if (errorCell && hasErrorField) {
+								errorCell.textContent = hasError ? String(state.last_error) : '—';
+							}
 						}
 
 						function finishRun(data) {
@@ -983,6 +1034,47 @@ final class WPGS_Admin {
 								var postType = this.getAttribute('data-post-type') || '';
 								var label = this.textContent ? this.textContent.replace(/^Export all\s+/i, '') : postType;
 								startBatch(postType, label);
+							});
+						}
+
+						for (var s = 0; s < syncButtons.length; s++) {
+							syncButtons[s].addEventListener('click', function () {
+								if (isRunning || isPaused || isStopping) {
+									return;
+								}
+								var self = this;
+								var postId = parseInt(self.getAttribute('data-post-id') || '0', 10);
+								if (!postId) {
+									return;
+								}
+								var prevText = self.textContent;
+								self.disabled = true;
+								self.textContent = 'Syncing...';
+
+								requestPostSync(postId)
+									.then(function (res) {
+										if (!res.success) {
+											var err = new Error((res.data && res.data.message) ? res.data.message : 'Failed syncing post.');
+											err.state = (res.data && res.data.state) ? res.data.state : null;
+											throw err;
+										}
+										var data = res.data || {};
+										setRowSyncState(postId, data.state || {});
+									})
+									.catch(function (err) {
+										var state = (err && err.state) ? err.state : {};
+										if (!state || typeof state !== 'object') {
+											state = {};
+										}
+										if (!Object.prototype.hasOwnProperty.call(state, 'last_error')) {
+											state.last_error = err && err.message ? err.message : 'Unknown error';
+										}
+										setRowSyncState(postId, state);
+									})
+									.finally(function () {
+										self.disabled = false;
+										self.textContent = prevText;
+									});
 							});
 						}
 
@@ -1287,6 +1379,61 @@ final class WPGS_Admin {
 				],
 			]
 		);
+	}
+
+	/**
+	 * Export a single post via AJAX.
+	 *
+	 * @return void
+	 */
+	public static function ajax_export_post(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+		}
+		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		$post = $post_id > 0 ? get_post( $post_id ) : null;
+		if ( ! $post ) {
+			wp_send_json_error( [ 'message' => 'Invalid post.' ], 400 );
+		}
+
+		$included = self::included_post_types();
+		if ( ! in_array( (string) $post->post_type, $included, true ) ) {
+			wp_send_json_error( [ 'message' => 'Post type is not included in sync settings.' ], 400 );
+		}
+
+		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
+		try {
+			$exporter->export_post( $post_id );
+			$state = WPGS_Sync_Meta::get( $post_id );
+			wp_send_json_success(
+				[
+					'post_id' => $post_id,
+					'message' => sprintf( 'Exported post #%d', $post_id ),
+					'state'   => [
+						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
+						'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
+						'last_error'     => (string) ( $state['last_error'] ?? '' ),
+					],
+				]
+			);
+		} catch ( Throwable $e ) {
+			WPGS_Sync_Meta::set_error( $post_id, (string) $e->getMessage() );
+			$state = WPGS_Sync_Meta::get( $post_id );
+			wp_send_json_error(
+				[
+					'post_id' => $post_id,
+					'message' => sprintf( 'Failed syncing post #%d: %s', $post_id, (string) $e->getMessage() ),
+					'state'   => [
+						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
+						'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
+						'last_error'     => (string) ( $state['last_error'] ?? '' ),
+					],
+				],
+				500
+			);
+		}
 	}
 
 	/**
