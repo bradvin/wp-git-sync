@@ -1764,11 +1764,35 @@ final class WPGS_Admin {
 				continue;
 			}
 
-			$list = is_array( $values ) ? $values : [ $values ];
+			$list = self::normalize_meta_values_for_import( $values );
 			foreach ( $list as $value ) {
 				add_post_meta( $post_id, $meta_key, $value, false );
 			}
 		}
+	}
+
+	/**
+	 * Normalize imported meta values to a list of meta rows.
+	 *
+	 * Meta export payload is typically key => list-of-values. However, when a
+	 * key stores a single value that is itself an associative array/object-like
+	 * structure, treat it as one value rather than splitting by keys.
+	 *
+	 * @param mixed $values Raw payload value for one meta key.
+	 * @return array<int,mixed>
+	 */
+	private static function normalize_meta_values_for_import( $values ): array {
+		if ( ! is_array( $values ) ) {
+			return [ $values ];
+		}
+
+		$keys = array_keys( $values );
+		$is_list = ( $keys === range( 0, count( $values ) - 1 ) );
+		if ( $is_list ) {
+			return $values;
+		}
+
+		return [ $values ];
 	}
 
 	/**
