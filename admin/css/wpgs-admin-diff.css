@@ -128,6 +128,14 @@
 	word-break: break-word;
 }
 
+.wpgs-diff-surface .diff tbody tr:nth-child(odd) td:not(.diff-addedline):not(.diff-deletedline) {
+	background: #f8fafc;
+}
+
+.wpgs-diff-surface .diff tbody tr:nth-child(even) td:not(.diff-addedline):not(.diff-deletedline) {
+	background: #ffffff;
+}
+
 .wpgs-tab-light {
 	display: inline-block;
 	width: 10px;
