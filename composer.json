@@ -10,7 +10,7 @@
         "szepeviktor/phpstan-wordpress": "^1.3"
     },
     "scripts": {
-        "phpstan": "phpstan analyse --level=5 -c vendor/szepeviktor/phpstan-wordpress/extension.neon wp-git-sync.php includes admin --memory-limit=1G --no-progress --debug",
-        "phpstan:baseline": "phpstan analyse --level=5 -c vendor/szepeviktor/phpstan-wordpress/extension.neon wp-git-sync.php includes admin --generate-baseline=phpstan-baseline.neon --no-progress --debug"
+        "phpstan": "phpstan analyse -c phpstan.neon.dist --memory-limit=1G --no-progress --debug",
+        "phpstan:baseline": "phpstan analyse -c phpstan.neon.dist --generate-baseline=phpstan-baseline.neon --no-progress --debug"
     }
 }

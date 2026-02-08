@@ -1,0 +1,25 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - wp-git-sync.php
+        - includes
+        - admin
+    excludePaths:
+        analyse:
+            - */vendor/*
+            - */node_modules/*
+            - */reports/*
+            - */admin/js/*
+            - */admin/css/*
+    dynamicConstantNames:
+        - ABSPATH
+        - WPGS_VERSION
+        - WPGS_PLUGIN_FILE
+        - WPGS_PLUGIN_DIR
+    treatPhpDocTypesAsCertain: false
+    tmpDir: .phpstan-cache
+    parallel:
+        maximumNumberOfProcesses: 1
