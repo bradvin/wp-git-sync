@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name: Git Sync
- * Description: Sync WordPress post content + meta to a Git branch.
+ * Plugin Name: WP Git Sync
+ * Description: Sync WordPress posts to GitHub.
  * Version: 0.1.0
  * Requires at least: 6.4
  * Requires PHP: 7.4

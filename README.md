@@ -1,6 +1,6 @@
-# Git Sync
+# WP Git Sync
 
-Contributors: foobender
+Contributors: bradvin, foobender
 Tags: git, github, sync
 Requires at least: 6.4
 Tested up to: 6.9
@@ -76,15 +76,8 @@ Required permissions for the selected repo:
 
 ## Notes
 
-- Exported content is raw `post_content` (no block serialization transforms yet).
+- Exported content is raw `post_content` (no block serialization transforms).
 - Post data export is sourced from `wp_posts` fields (excluding `post_content`).
 - Meta export is sourced from `get_post_meta( $post_id )` only.
 - Meta blacklist defaults to excluding `_edit_lock`.
   - Additional excluded keys can be provided via the `wpgs_export_postmeta_blacklist` filter.
-
-## Roadmap
-
-Next:
-- Replace git-shell adapter with a GitHub API adapter (Git Data API for batch commits)
-- Per-post remote fetch + diff + apply
-- On-save auto-push if previously synced
