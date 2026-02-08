@@ -3,13 +3,13 @@
 Contributors: foobender
 Tags: git, github, sync
 Requires at least: 6.4
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.4
 Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Sync post content, post data, and post meta to a GitHub branch using deterministic file paths.
+Sync WordPress content and metadata to GitHub.
 
 > Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and uses **fine-grained PAT** auth.
 
