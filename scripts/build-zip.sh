@@ -59,6 +59,13 @@ if [ -f "$STAGING_DIR/composer.json" ]; then
   )
 fi
 
+# Exclude development/packaging-only files from final ZIP.
+rm -f \
+  "$STAGING_DIR/.gitignore" \
+  "$STAGING_DIR/composer.json" \
+  "$STAGING_DIR/composer.lock" \
+  "$STAGING_DIR/phpstan.neon.dist"
+
 (
   cd "$BUILD_ROOT"
   zip -r "$ZIP_PATH" "$PLUGIN_SLUG" >/dev/null
