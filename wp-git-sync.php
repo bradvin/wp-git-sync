@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: WP Git Sync
+ * Plugin Name: Git Sync
  * Description: Sync WordPress post content + meta to a Git branch.
  * Version: 0.1.0
  * Requires at least: 6.4
