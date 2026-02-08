@@ -180,32 +180,32 @@ final class WPGS_Admin_Page_Diff {
 				<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
 					<?php if ( ! $content_changed ) : ?>
 						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php echo (string) ( $diff['content_diff'] ?? '' ); ?>
-						</div>
-					<?php endif; ?>
-				</section>
+						<?php else : ?>
+							<div class="wpgs-diff-output wpgs-diff-surface">
+								<?php echo wp_kses_post( (string) ( $diff['content_diff'] ?? '' ) ); ?>
+							</div>
+						<?php endif; ?>
+					</section>
 
 				<section id="wpgs-tab-post" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-post-link" hidden>
 					<?php if ( ! $post_changed ) : ?>
 						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php echo (string) ( $diff['post_diff'] ?? '' ); ?>
-						</div>
-					<?php endif; ?>
-				</section>
+						<?php else : ?>
+							<div class="wpgs-diff-output wpgs-diff-surface">
+								<?php echo wp_kses_post( (string) ( $diff['post_diff'] ?? '' ) ); ?>
+							</div>
+						<?php endif; ?>
+					</section>
 
 				<section id="wpgs-tab-meta" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-meta-link" hidden>
 					<?php if ( ! $meta_changed ) : ?>
 						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php echo (string) ( $diff['meta_diff'] ?? '' ); ?>
-						</div>
-					<?php endif; ?>
-				</section>
+						<?php else : ?>
+							<div class="wpgs-diff-output wpgs-diff-surface">
+								<?php echo wp_kses_post( (string) ( $diff['meta_diff'] ?? '' ) ); ?>
+							</div>
+						<?php endif; ?>
+					</section>
 			<?php else : ?>
 				<article class="wpgs-card wpgs-check-state-card">
 					<h2 class="wpgs-card-title">Check</h2>
