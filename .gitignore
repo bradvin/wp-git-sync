@@ -1,2 +1,3 @@
 /vendor/
 /.phpstan-cache/
+/dist/
