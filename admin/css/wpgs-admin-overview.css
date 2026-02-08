@@ -1,0 +1,144 @@
+.wpgs-overview-card {
+	margin-top: 16px;
+	max-width: 1200px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	padding: 14px 16px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.wpgs-overview-card h2 {
+	margin-top: 0;
+}
+
+.wpgs-repo-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 10px;
+}
+
+.wpgs-status-dot {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.wpgs-status-dot.is-green {
+	background: #46b450;
+}
+
+.wpgs-action-row {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.wpgs-action-row p {
+	margin: 0;
+}
+
+.wpgs-type-tabs-wrap {
+	margin-top: 16px;
+}
+
+.wpgs-type-tabs-nav {
+	margin-bottom: 12px;
+}
+
+.wpgs-type-panel[hidden] {
+	display: none !important;
+}
+
+.wpgs-sync-table {
+	margin-top: 8px;
+	table-layout: fixed;
+}
+
+.wpgs-sync-table .wpgs-col-post {
+	width: 38%;
+}
+
+.wpgs-sync-table .wpgs-col-state {
+	width: 10%;
+}
+
+.wpgs-sync-table .wpgs-col-synced {
+	width: 12%;
+}
+
+.wpgs-sync-table .wpgs-col-error {
+	width: 30%;
+}
+
+.wpgs-sync-table .wpgs-col-actions {
+	width: 10%;
+}
+
+.wpgs-sync-table td.wpgs-row-last-error {
+	white-space: normal;
+	word-break: break-word;
+}
+
+.wpgs-sync-table td.wpgs-row-actions {
+	white-space: nowrap;
+}
+
+.wpgs-sync-table td.wpgs-row-actions .button {
+	margin-right: 4px;
+}
+
+.wpgs-sync-table td.wpgs-row-actions .button:last-child {
+	margin-right: 0;
+}
+
+.wpgs-pill {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.wpgs-pill.is-synced {
+	background: #edfaef;
+	color: #1f7a2f;
+}
+
+.wpgs-pill.is-error {
+	background: #fdecec;
+	color: #9a1f1f;
+}
+
+.wpgs-export-progress {
+	margin-top: 12px;
+}
+
+.wpgs-export-controls {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin: 8px 0 0;
+}
+
+.wpgs-export-progress-bar {
+	width: 100%;
+	max-width: 540px;
+	height: 10px;
+	background: #f0f0f1;
+	border: 1px solid #dcdcde;
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+.wpgs-export-progress-bar span {
+	display: block;
+	height: 100%;
+	width: 0;
+	background: #2271b1;
+	transition: width 160ms linear;
+}

@@ -19,6 +19,10 @@ require_once __DIR__ . '/class-wpgs-diff.php';
 require_once __DIR__ . '/class-wpgs-github-client.php';
 require_once __DIR__ . '/class-wpgs-github-provider.php';
 require_once __DIR__ . '/class-wpgs-exporter.php';
+require_once WPGS_PLUGIN_DIR . '/admin/class-wpgs-admin-page-main.php';
+require_once WPGS_PLUGIN_DIR . '/admin/class-wpgs-admin-page-diff.php';
+require_once WPGS_PLUGIN_DIR . '/admin/class-wpgs-admin-page-settings.php';
+require_once WPGS_PLUGIN_DIR . '/admin/class-wpgs-admin-metabox.php';
 require_once __DIR__ . '/class-wpgs-admin.php';
 
 /**

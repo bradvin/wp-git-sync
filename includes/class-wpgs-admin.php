@@ -29,6 +29,7 @@ final class WPGS_Admin {
 	 */
 	public static function register(): void {
 		add_action( 'admin_menu', [ __CLASS__, 'admin_menu' ] );
+		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_admin_assets' ] );
 		add_action( 'admin_post_wpgs_export_all', [ __CLASS__, 'handle_export_all' ] );
 		add_action( 'admin_post_wpgs_setup_repo', [ __CLASS__, 'handle_setup_repo' ] );
 		add_action( 'admin_post_wpgs_export_post', [ __CLASS__, 'handle_export_post' ] );
@@ -58,6 +59,62 @@ final class WPGS_Admin {
 			'wpgs',
 			[ __CLASS__, 'render_tools_page' ]
 		);
+	}
+
+	/**
+	 * Enqueue admin assets for the WP Git Sync tools page.
+	 *
+	 * @param string $hook_suffix Current admin page hook.
+	 * @return void
+	 */
+	public static function enqueue_admin_assets( string $hook_suffix ): void {
+		if ( 'tools_page_wpgs' !== $hook_suffix ) {
+			return;
+		}
+
+		$tab = self::current_tab();
+		$base = plugin_dir_url( WPGS_PLUGIN_FILE );
+
+		if ( 'overview' === $tab ) {
+			wp_enqueue_style(
+				'wpgs-admin-overview',
+				$base . 'admin/css/wpgs-admin-overview.css',
+				[],
+				WPGS_VERSION
+			);
+			wp_enqueue_script(
+				'wpgs-admin-overview',
+				$base . 'admin/js/wpgs-admin-overview.js',
+				[],
+				WPGS_VERSION,
+				true
+			);
+			wp_localize_script(
+				'wpgs-admin-overview',
+				'wpgsOverviewConfig',
+				[
+					'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+					'nonce'   => wp_create_nonce( 'wpgs_export_batch' ),
+				]
+			);
+			return;
+		}
+
+		if ( 'diff' === $tab ) {
+			wp_enqueue_style(
+				'wpgs-admin-diff',
+				$base . 'admin/css/wpgs-admin-diff.css',
+				[],
+				WPGS_VERSION
+			);
+			wp_enqueue_script(
+				'wpgs-admin-diff',
+				$base . 'admin/js/wpgs-admin-diff.js',
+				[],
+				WPGS_VERSION,
+				true
+			);
+		}
 	}
 
 	/**
@@ -103,7 +160,7 @@ final class WPGS_Admin {
 	 * @param array<string,mixed> $args Additional query args.
 	 * @return string
 	 */
-	private static function tools_page_url( array $args = [] ): string {
+	public static function tools_page_url( array $args = [] ): string {
 		$base_args = [ 'page' => 'wpgs' ];
 		return add_query_arg( array_merge( $base_args, $args ), admin_url( 'tools.php' ) );
 	}
@@ -115,7 +172,7 @@ final class WPGS_Admin {
 	 * @param int    $post_id Optional post ID for diff deep-linking.
 	 * @return void
 	 */
-	private static function render_primary_tabs( string $active_tab, int $post_id = 0 ): void {
+	public static function render_primary_tabs( string $active_tab, int $post_id = 0 ): void {
 		$overview_url = self::tools_page_url();
 		$diff_args = [ 'tab' => 'diff' ];
 		if ( $post_id > 0 ) {
@@ -500,9 +557,6 @@ final class WPGS_Admin {
 			return;
 		}
 
-		$action_url = admin_url( 'admin-post.php' );
-		$ajax_url   = admin_url( 'admin-ajax.php' );
-		$batch_nonce = wp_create_nonce( 'wpgs_export_batch' );
 		$settings   = WPGS_Settings::get();
 		$owner      = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo       = trim( (string) ( $settings['github_repo'] ?? '' ) );
@@ -517,682 +571,20 @@ final class WPGS_Admin {
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
 		$included_post_types = self::included_post_types();
 		$post_type_tabs = $repo_ready ? self::post_type_tab_data( $included_post_types ) : [];
-		?>
-		<div class="wrap">
-			<h1>WP Git Sync</h1>
-			<?php self::render_primary_tabs( 'overview' ); ?>
-			<?php if ( 'repo_setup' === $state ) : ?>
-				<div class="notice notice-success inline"><p>Repository branch was prepared successfully.</p></div>
-				<?php elseif ( 'exported' === $state ) : ?>
-					<div class="notice notice-success inline"><p>Export completed successfully.</p></div>
-				<?php elseif ( 'batch_started' === $state ) : ?>
-					<div class="notice notice-info inline"><p>Export batch started. Progress appears below.</p></div>
-				<?php endif; ?>
 
-			<?php if ( ! $repo_ready ) : ?>
-				<div class="notice notice-warning inline">
-					<p>GitHub repo is not configured yet. <a href="<?php echo esc_url( $settings_url ); ?>">Setup a repo in Settings</a>.</p>
-				</div>
-			<?php else : ?>
-				<div class="wpgs-overview-card">
-					<h2>Repository</h2>
-					<p class="wpgs-repo-status">
-						<span class="wpgs-status-dot is-green" aria-hidden="true"></span>
-						<strong><?php echo esc_html( $repo_full ); ?></strong>
-						<span>on</span>
-						<code><?php echo esc_html( $branch ); ?></code>
-					</p>
-
-					<div class="wpgs-action-row">
-						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer">Open Repo</a></p>
-
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('Setup Repo will wipe all files on this branch. Continue?');">
-							<input type="hidden" name="action" value="wpgs_setup_repo" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_setup_repo' ) ); ?>" />
-							<?php submit_button( 'Setup Repo', 'delete', 'submit', false ); ?>
-						</form>
-
-						<p>
-							<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
-						</p>
-					</div>
-
-					<?php if ( empty( $included_post_types ) ) : ?>
-						<p class="description">No Included Post Types are selected. <a href="<?php echo esc_url( $settings_url ); ?>">Choose at least one in Settings</a>.</p>
-					<?php endif; ?>
-
-					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
-						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-							<span id="wpgs-export-progress-fill"></span>
-						</div>
-						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
-						<p id="wpgs-export-controls" class="wpgs-export-controls" hidden>
-							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden>Resume Export</button>
-							<button type="button" class="button button-secondary" id="wpgs-export-pause-btn" hidden>Pause Export</button>
-							<button type="button" class="button button-link-delete" id="wpgs-export-stop-btn" hidden>Stop Export</button>
-						</p>
-					</div>
-
-					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
-				</div>
-
-				<?php if ( ! empty( $post_type_tabs ) ) : ?>
-					<div class="wpgs-overview-card wpgs-post-types-card">
-						<h2>Post Types</h2>
-						<div class="wpgs-type-tabs-wrap">
-							<nav class="nav-tab-wrapper wpgs-type-tabs-nav" id="wpgs-type-tabs-nav" role="tablist" aria-label="Post Types">
-								<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
-									<a
-										href="#wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
-										class="nav-tab <?php echo 0 === $i ? 'nav-tab-active' : ''; ?>"
-										role="tab"
-										data-type-tab="<?php echo esc_attr( (string) $tab['slug'] ); ?>"
-										aria-selected="<?php echo 0 === $i ? 'true' : 'false'; ?>"
-									><?php echo esc_html( (string) $tab['label'] ); ?></a>
-								<?php endforeach; ?>
-							</nav>
-
-							<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
-								<section
-									id="wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
-									class="wpgs-type-panel"
-									role="tabpanel"
-									<?php echo 0 === $i ? '' : 'hidden'; ?>
-								>
-									<p><strong>Post count:</strong> <?php echo (int) $tab['count']; ?></p>
-									<p>
-										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>">
-											Export all <?php echo esc_html( (string) $tab['label'] ); ?>
-										</button>
-									</p>
-
-									<h3>Synced Posts</h3>
-									<?php if ( empty( $tab['rows'] ) ) : ?>
-										<p class="description">No synced/error posts found for this post type.</p>
-									<?php else : ?>
-										<table class="widefat striped wpgs-sync-table">
-											<colgroup>
-												<col class="wpgs-col-post" />
-												<col class="wpgs-col-state" />
-												<col class="wpgs-col-synced" />
-												<col class="wpgs-col-error" />
-												<col class="wpgs-col-actions" />
-											</colgroup>
-											<thead>
-												<tr>
-													<th>Post</th>
-													<th>Sync state</th>
-													<th>Last synced</th>
-													<th>Last error</th>
-													<th>Actions</th>
-												</tr>
-											</thead>
-											<tbody>
-												<?php foreach ( $tab['rows'] as $row ) : ?>
-													<tr data-post-id="<?php echo (int) $row['id']; ?>">
-														<td>
-															<?php if ( ! empty( $row['edit_link'] ) ) : ?>
-																<a href="<?php echo esc_url( (string) $row['edit_link'] ); ?>"><?php echo esc_html( (string) $row['title'] ); ?></a>
-															<?php else : ?>
-																<?php echo esc_html( (string) $row['title'] ); ?>
-															<?php endif; ?>
-															<code>#<?php echo (int) $row['id']; ?></code>
-														</td>
-														<td class="wpgs-row-state">
-															<?php if ( ! empty( $row['last_error'] ) ) : ?>
-																<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>
-															<?php else : ?>
-																<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>
-															<?php endif; ?>
-														</td>
-														<td class="wpgs-row-last-synced"><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
-														<td class="wpgs-row-last-error"><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
-														<td class="wpgs-row-actions">
-															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Export</button>
-															<a class="button button-small" href="<?php echo esc_url( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $row['id'] ] ) ); ?>">Diff</a>
-														</td>
-													</tr>
-												<?php endforeach; ?>
-											</tbody>
-										</table>
-									<?php endif; ?>
-								</section>
-							<?php endforeach; ?>
-						</div>
-					</div>
-				<?php endif; ?>
-			<?php endif; ?>
-			<style>
-				.wpgs-overview-card {
-					margin-top: 16px;
-					max-width: 1200px;
-					background: #fff;
-					border: 1px solid #dcdcde;
-					border-radius: 8px;
-					padding: 14px 16px;
-					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-				}
-				.wpgs-overview-card h2 {
-					margin-top: 0;
-				}
-				.wpgs-repo-status {
-					display: flex;
-					align-items: center;
-					gap: 8px;
-					margin: 0 0 10px;
-				}
-				.wpgs-status-dot {
-					display: inline-block;
-					width: 10px;
-					height: 10px;
-					border-radius: 50%;
-					border: 1px solid rgba(0, 0, 0, 0.18);
-				}
-				.wpgs-status-dot.is-green {
-					background: #46b450;
-				}
-				.wpgs-action-row {
-					display: flex;
-					gap: 8px;
-					flex-wrap: wrap;
-					align-items: center;
-				}
-				.wpgs-action-row p {
-					margin: 0;
-				}
-				.wpgs-type-tabs-wrap {
-					margin-top: 16px;
-				}
-				.wpgs-type-tabs-nav {
-					margin-bottom: 12px;
-				}
-				.wpgs-type-panel[hidden] {
-					display: none !important;
-				}
-				.wpgs-sync-table {
-					margin-top: 8px;
-					table-layout: fixed;
-				}
-				.wpgs-sync-table .wpgs-col-post {
-					width: 38%;
-				}
-				.wpgs-sync-table .wpgs-col-state {
-					width: 10%;
-				}
-				.wpgs-sync-table .wpgs-col-synced {
-					width: 12%;
-				}
-				.wpgs-sync-table .wpgs-col-error {
-					width: 30%;
-				}
-				.wpgs-sync-table .wpgs-col-actions {
-					width: 10%;
-				}
-				.wpgs-sync-table td.wpgs-row-last-error {
-					white-space: normal;
-					word-break: break-word;
-				}
-				.wpgs-sync-table td.wpgs-row-actions {
-					white-space: nowrap;
-				}
-				.wpgs-sync-table td.wpgs-row-actions .button {
-					margin-right: 4px;
-				}
-				.wpgs-sync-table td.wpgs-row-actions .button:last-child {
-					margin-right: 0;
-				}
-				.wpgs-pill {
-					display: inline-block;
-					padding: 2px 8px;
-					border-radius: 999px;
-					font-size: 11px;
-					font-weight: 600;
-				}
-				.wpgs-pill.is-synced {
-					background: #edfaef;
-					color: #1f7a2f;
-				}
-				.wpgs-pill.is-error {
-					background: #fdecec;
-					color: #9a1f1f;
-				}
-				.wpgs-export-progress {
-					margin-top: 12px;
-				}
-				.wpgs-export-controls {
-					display: flex;
-					gap: 8px;
-					align-items: center;
-					margin: 8px 0 0;
-				}
-				.wpgs-export-progress-bar {
-					width: 100%;
-					max-width: 540px;
-					height: 10px;
-					background: #f0f0f1;
-					border: 1px solid #dcdcde;
-					border-radius: 999px;
-					overflow: hidden;
-				}
-				.wpgs-export-progress-bar span {
-					display: block;
-					height: 100%;
-					width: 0;
-					background: #2271b1;
-					transition: width 160ms linear;
-				}
-			</style>
-			<?php if ( $repo_ready ) : ?>
-				<script>
-					(function () {
-						var btn = document.getElementById('wpgs-export-all-btn');
-						if (!btn) {
-							return;
-						}
-
-						var progressWrap = document.getElementById('wpgs-export-progress');
-						var progressFill = document.getElementById('wpgs-export-progress-fill');
-						var progressText = document.getElementById('wpgs-export-progress-text');
-						var controlsWrap = document.getElementById('wpgs-export-controls');
-						var resumeBtn = document.getElementById('wpgs-export-resume-btn');
-						var pauseBtn = document.getElementById('wpgs-export-pause-btn');
-						var stopBtn = document.getElementById('wpgs-export-stop-btn');
-						var typeTabsNav = document.getElementById('wpgs-type-tabs-nav');
-						var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
-						var typePanels = document.querySelectorAll('.wpgs-type-panel');
-						var typeButtons = document.querySelectorAll('.wpgs-export-type-btn');
-						var syncButtons = document.querySelectorAll('.wpgs-sync-post-btn');
-						var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
-						var nonce = <?php echo wp_json_encode( $batch_nonce ); ?>;
-						var isRunning = false;
-						var isPaused = false;
-						var isStopping = false;
-						var stopRequested = false;
-						var currentScopeLabel = 'All post types';
-						var pendingResumeData = null;
-						var latestProgressData = null;
-
-						function toBody(action, postType) {
-							var body = new URLSearchParams();
-							body.append('action', action);
-							body.append('nonce', nonce);
-							if (postType) {
-								body.append('post_type', postType);
-							}
-							return body.toString();
-						}
-
-						function request(action, postType) {
-							return fetch(ajaxUrl, {
-								method: 'POST',
-								credentials: 'same-origin',
-								headers: {
-									'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-								},
-								body: toBody(action, postType)
-							}).then(function (res) {
-								return res.json();
-							});
-						}
-
-						function requestPostSync(postId) {
-							var body = new URLSearchParams();
-							body.append('action', 'wpgs_export_post_ajax');
-							body.append('nonce', nonce);
-							body.append('post_id', String(postId));
-							return fetch(ajaxUrl, {
-								method: 'POST',
-								credentials: 'same-origin',
-								headers: {
-									'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-								},
-								body: body.toString()
-							}).then(function (res) {
-								return res.json();
-							});
-						}
-
-						function setExportButtonsEnabled(enabled) {
-							btn.disabled = !enabled;
-							for (var i = 0; i < typeButtons.length; i++) {
-								typeButtons[i].disabled = !enabled;
-							}
-							for (var j = 0; j < syncButtons.length; j++) {
-								syncButtons[j].disabled = !enabled;
-							}
-						}
-
-						function setControlVisible(el, visible) {
-							if (!el) {
-								return;
-							}
-							el.hidden = !visible;
-							el.style.display = visible ? '' : 'none';
-						}
-
-						function refreshControlButtons() {
-							if (!controlsWrap) {
-								return;
-							}
-							var hasPendingResume = !isRunning && !!pendingResumeData;
-							var showControls = isRunning || isPaused || hasPendingResume;
-							controlsWrap.hidden = !showControls;
-							controlsWrap.style.display = showControls ? 'flex' : 'none';
-							setControlVisible(resumeBtn, isPaused || hasPendingResume);
-							setControlVisible(pauseBtn, isRunning && !isPaused && !isStopping);
-							setControlVisible(stopBtn, isRunning || isPaused || hasPendingResume);
-						}
-
-						function renderProgress(data) {
-							if (data.scope_label) {
-								currentScopeLabel = data.scope_label;
-							}
-							latestProgressData = data;
-							var pct = typeof data.percent === 'number' ? data.percent : 0;
-							pct = Math.max(0, Math.min(100, pct));
-							progressFill.style.width = pct + '%';
-							var bar = progressWrap.querySelector('.wpgs-export-progress-bar');
-							if (bar) {
-								bar.setAttribute('aria-valuenow', String(pct));
-							}
-
-							var base = currentScopeLabel + ' export: ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
-							if (data.last_step && data.last_step.message) {
-								base += data.last_step.message + ' ';
-							}
-							base += 'Succeeded: ' + data.succeeded + '. Failed: ' + data.failed + '.';
-							progressText.textContent = base;
-						}
-
-						function setRowSyncState(postId, state) {
-							var row = document.querySelector('tr[data-post-id="' + String(postId) + '"]');
-							if (!row) {
-								return;
-							}
-							var stateCell = row.querySelector('.wpgs-row-state');
-							var syncedCell = row.querySelector('.wpgs-row-last-synced');
-							var errorCell = row.querySelector('.wpgs-row-last-error');
-							var hasError = state && state.last_error;
-							var hasSyncedField = state && Object.prototype.hasOwnProperty.call(state, 'last_synced_at');
-							var hasErrorField = state && Object.prototype.hasOwnProperty.call(state, 'last_error');
-
-							if (stateCell) {
-								stateCell.innerHTML = hasError
-									? '<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>'
-									: '<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>';
-							}
-							if (syncedCell && hasSyncedField) {
-								syncedCell.textContent = state && state.last_synced_at ? String(state.last_synced_at) : '—';
-							}
-							if (errorCell && hasErrorField) {
-								errorCell.textContent = hasError ? String(state.last_error) : '—';
-							}
-						}
-
-						function finishRun(data) {
-							isRunning = false;
-							isPaused = false;
-							pendingResumeData = null;
-							latestProgressData = data || latestProgressData;
-							setExportButtonsEnabled(true);
-							btn.textContent = 'Export All Posts';
-							refreshControlButtons();
-							renderProgress(data);
-						}
-
-						function beginPollingWithCurrentState(data) {
-							stopRequested = false;
-							isRunning = true;
-							isPaused = false;
-							pendingResumeData = null;
-							setExportButtonsEnabled(false);
-							btn.textContent = 'Exporting...';
-							progressWrap.hidden = false;
-							refreshControlButtons();
-							renderProgress(data);
-							window.setTimeout(pollStep, 200);
-						}
-
-						function pollStep() {
-							if (!isRunning || isPaused) {
-								return;
-							}
-							request('wpgs_export_batch_step')
-								.then(function (res) {
-									if (!res.success) {
-										throw new Error((res.data && res.data.message) ? res.data.message : 'Batch step failed.');
-									}
-									if (stopRequested) {
-										return;
-									}
-									var data = res.data || {};
-									renderProgress(data);
-									if (data.done) {
-										finishRun(data);
-										return;
-									}
-									if (isPaused || !isRunning) {
-										pendingResumeData = data;
-										refreshControlButtons();
-										return;
-									}
-										window.setTimeout(pollStep, 350);
-								})
-									.catch(function (err) {
-										if (stopRequested) {
-											return;
-										}
-										isRunning = false;
-										isPaused = false;
-										pendingResumeData = null;
-										setExportButtonsEnabled(true);
-										btn.textContent = 'Export All Posts';
-										refreshControlButtons();
-										progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
-									});
-						}
-
-						function startBatch(postType, scopeLabel) {
-							if (isRunning || isPaused || isStopping) {
-								return;
-							}
-							progressWrap.hidden = false;
-							progressFill.style.width = '0%';
-							progressText.textContent = 'Starting export batch...';
-							currentScopeLabel = scopeLabel || 'All post types';
-							pendingResumeData = null;
-							latestProgressData = null;
-							stopRequested = false;
-							isRunning = true;
-							isPaused = false;
-							setExportButtonsEnabled(false);
-							btn.textContent = 'Exporting...';
-							refreshControlButtons();
-
-							request('wpgs_export_batch_start', postType)
-								.then(function (res) {
-									if (!res.success) {
-										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
-									}
-									var data = res.data || {};
-									beginPollingWithCurrentState(data);
-								})
-								.catch(function (err) {
-									isRunning = false;
-									isPaused = false;
-									setExportButtonsEnabled(true);
-									btn.textContent = 'Export All Posts';
-									refreshControlButtons();
-									progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
-								});
-						}
-
-						function pauseBatch() {
-							if (!isRunning) {
-								return;
-							}
-							isPaused = true;
-							isRunning = false;
-							pendingResumeData = latestProgressData;
-							btn.textContent = 'Export Paused';
-							refreshControlButtons();
-							progressText.textContent = progressText.textContent.replace(/\s*Export paused\.$/, '') + ' Export paused.';
-						}
-
-						function stopBatch() {
-							if (isStopping) {
-								return;
-							}
-							isStopping = true;
-							stopRequested = true;
-							isRunning = false;
-							isPaused = false;
-							refreshControlButtons();
-							request('wpgs_export_batch_stop')
-								.then(function (res) {
-									if (!res.success) {
-										throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to stop export.');
-									}
-									var data = res.data || {};
-									pendingResumeData = null;
-									latestProgressData = null;
-									btn.textContent = 'Export All Posts';
-									setExportButtonsEnabled(true);
-									refreshControlButtons();
-									progressWrap.hidden = false;
-									progressFill.style.width = '0%';
-									progressText.textContent = (data.last_step && data.last_step.message)
-										? data.last_step.message
-										: 'Export stopped.';
-								})
-								.catch(function (err) {
-									setExportButtonsEnabled(false);
-									progressText.textContent = 'Unable to stop export: ' + (err && err.message ? err.message : 'Unknown error');
-								})
-								.finally(function () {
-									isStopping = false;
-								});
-						}
-
-						btn.addEventListener('click', function () {
-							startBatch('', 'All post types');
-						});
-
-						for (var t = 0; t < typeButtons.length; t++) {
-							typeButtons[t].addEventListener('click', function () {
-								var postType = this.getAttribute('data-post-type') || '';
-								var label = this.textContent ? this.textContent.replace(/^Export all\s+/i, '') : postType;
-								startBatch(postType, label);
-							});
-						}
-
-						for (var s = 0; s < syncButtons.length; s++) {
-							syncButtons[s].addEventListener('click', function () {
-								if (isRunning || isPaused || isStopping) {
-									return;
-								}
-								var self = this;
-								var postId = parseInt(self.getAttribute('data-post-id') || '0', 10);
-								if (!postId) {
-									return;
-								}
-								var prevText = self.textContent;
-								self.disabled = true;
-								self.textContent = 'Exporting...';
-
-								requestPostSync(postId)
-									.then(function (res) {
-										if (!res.success) {
-											var err = new Error((res.data && res.data.message) ? res.data.message : 'Failed syncing post.');
-											err.state = (res.data && res.data.state) ? res.data.state : null;
-											throw err;
-										}
-										var data = res.data || {};
-										setRowSyncState(postId, data.state || {});
-									})
-									.catch(function (err) {
-										var state = (err && err.state) ? err.state : {};
-										if (!state || typeof state !== 'object') {
-											state = {};
-										}
-										if (!Object.prototype.hasOwnProperty.call(state, 'last_error')) {
-											state.last_error = err && err.message ? err.message : 'Unknown error';
-										}
-										setRowSyncState(postId, state);
-									})
-									.finally(function () {
-										self.disabled = false;
-										self.textContent = prevText;
-									});
-							});
-						}
-
-						function activateTypeTab(slug) {
-							if (!typeTabLinks.length) {
-								return;
-							}
-							for (var i = 0; i < typeTabLinks.length; i++) {
-								var active = typeTabLinks[i].getAttribute('data-type-tab') === slug;
-								typeTabLinks[i].classList.toggle('nav-tab-active', active);
-								typeTabLinks[i].setAttribute('aria-selected', active ? 'true' : 'false');
-							}
-							for (var j = 0; j < typePanels.length; j++) {
-								var panelActive = typePanels[j].id === ('wpgs-type-tab-' + slug);
-								if (panelActive) {
-									typePanels[j].removeAttribute('hidden');
-								} else {
-									typePanels[j].setAttribute('hidden', 'hidden');
-								}
-							}
-						}
-
-						for (var n = 0; n < typeTabLinks.length; n++) {
-							typeTabLinks[n].addEventListener('click', function (event) {
-								event.preventDefault();
-								activateTypeTab(this.getAttribute('data-type-tab'));
-							});
-						}
-
-						if (resumeBtn) {
-							resumeBtn.addEventListener('click', function () {
-								if (!pendingResumeData || isRunning) {
-									return;
-								}
-								beginPollingWithCurrentState(pendingResumeData);
-							});
-						}
-						if (pauseBtn) {
-							pauseBtn.addEventListener('click', pauseBatch);
-						}
-						if (stopBtn) {
-							stopBtn.addEventListener('click', stopBatch);
-						}
-
-						// Detect an active batch after refresh/navigation and offer manual resume.
-						request('wpgs_export_batch_status')
-							.then(function (res) {
-								if (!res.success) {
-									return;
-								}
-								var data = res.data || {};
-								if (!data.active) {
-									return;
-								}
-								pendingResumeData = data;
-								progressWrap.hidden = false;
-								renderProgress(data);
-								progressText.textContent += ' Click Resume Export to continue.';
-								refreshControlButtons();
-								setExportButtonsEnabled(false);
-							})
-							.catch(function () {
-								// Silent failure: manual start button remains available.
-							});
-					})();
-				</script>
-			<?php endif; ?>
-		</div>
-		<?php
+		WPGS_Admin_Page_Main::render(
+			[
+				'action_url'          => admin_url( 'admin-post.php' ),
+				'state'               => $state,
+				'settings_url'        => $settings_url,
+				'repo_ready'          => $repo_ready,
+				'repo_full'           => $repo_full,
+				'branch'              => $branch,
+				'repo_url'            => $repo_url,
+				'included_post_types' => $included_post_types,
+				'post_type_tabs'      => $post_type_tabs,
+			]
+		);
 	}
 
 	/**
@@ -1236,79 +628,17 @@ final class WPGS_Admin {
 			? array_values( array_unique( array_map( 'sanitize_key', $settings['included_post_types'] ) ) )
 			: [];
 
-		?>
-		<div class="wrap">
-			<h1>WP Git Sync</h1>
-			<?php self::render_primary_tabs( 'settings' ); ?>
-			<h2>Settings</h2>
-
-			<form method="post" action="options.php">
-				<?php settings_fields( 'wpgs' ); ?>
-				<table class="form-table" role="presentation">
-					<tr>
-						<th scope="row"><label for="wpgs_pat_token">GitHub PAT token</label></th>
-						<td>
-							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_pat_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_token]" value="" />
-							<p class="description">Leave blank to keep the existing token. You can also define <code>WPGS_GITHUB_PAT</code> in <code>wp-config.php</code> (preferred).</p>
-						</td>
-					</tr>
-
-					<?php if ( ! $token_available ) : ?>
-					<tr>
-						<th scope="row">Next step</th>
-						<td><p class="description">Save a PAT token first. Repo and branch settings will appear after PAT is configured.</p></td>
-					</tr>
-					<?php else : ?>
-				<tr>
-					<th scope="row"><label for="wpgs_github_repo_full">GitHub repo</label></th>
-					<td>
-						<select id="wpgs_github_repo_full" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_repo_full]" class="regular-text">
-							<option value="">Select a repository</option>
-								<?php foreach ( $repo_options as $repo_full ) : ?>
-									<option value="<?php echo esc_attr( $repo_full ); ?>" <?php selected( $repo_full, $selected_repo_full ); ?>><?php echo esc_html( $repo_full ); ?></option>
-								<?php endforeach; ?>
-							</select>
-								<?php if ( '' !== $repo_fetch_error ) : ?>
-									<p class="description">Could not load repos from GitHub: <?php echo esc_html( $repo_fetch_error ); ?></p>
-								<?php else : ?>
-									<p class="description">Only repositories you can push to are listed.</p>
-								<?php endif; ?>
-							</td>
-						</tr>
-					<tr>
-						<th scope="row"><label for="wpgs_branch">Branch</label></th>
-						<td><input class="regular-text" id="wpgs_branch" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[branch]" value="<?php echo esc_attr( (string) $settings['branch'] ); ?>" /></td>
-					</tr>
-					<?php endif; ?>
-					<tr>
-						<th scope="row">Included Post Types</th>
-						<td>
-							<?php if ( empty( $post_type_options ) ) : ?>
-								<p class="description">No post types are currently available.</p>
-							<?php else : ?>
-								<fieldset>
-									<?php foreach ( $post_type_options as $post_type_slug => $post_type_label ) : ?>
-										<label style="display:block;margin-bottom:4px;">
-											<input
-												type="checkbox"
-												name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[included_post_types][]"
-												value="<?php echo esc_attr( (string) $post_type_slug ); ?>"
-												<?php checked( in_array( (string) $post_type_slug, $included_post_types, true ) ); ?>
-											/>
-											<?php echo esc_html( sprintf( '%s (%s)', (string) $post_type_label, (string) $post_type_slug ) ); ?>
-										</label>
-									<?php endforeach; ?>
-								</fieldset>
-							<?php endif; ?>
-							<p class="description">Only selected post types appear on Overview and are exported by Export All Posts.</p>
-						</td>
-					</tr>
-				</table>
-
-				<?php submit_button( 'Save settings' ); ?>
-			</form>
-		</div>
-		<?php
+		WPGS_Admin_Page_Settings::render(
+			[
+				'settings'            => $settings,
+				'token_available'     => $token_available,
+				'repo_options'        => $repo_options,
+				'repo_fetch_error'    => $repo_fetch_error,
+				'post_type_options'   => $post_type_options,
+				'included_post_types' => $included_post_types,
+				'selected_repo_full'  => $selected_repo_full,
+			]
+		);
 	}
 
 	/**
@@ -1981,21 +1311,13 @@ final class WPGS_Admin {
 		}
 
 		$post_id = isset( $_GET['post_id'] ) ? (int) $_GET['post_id'] : 0;
-		$post = $post_id ? get_post( $post_id ) : null;
-
-		if ( ! $post ) {
-			$overview_url = self::tools_page_url();
-			echo '<div class="wrap"><h1>WP Git Sync</h1>';
-			self::render_primary_tabs( 'diff' );
-			echo '<p>No post was selected for diff. Open the Overview tab, then click <strong>Diff</strong> on a post row.</p>';
-			echo '<p><a class="button" href="' . esc_url( $overview_url ) . '">Go to Overview</a></p></div>';
-			return;
-		}
+		$post    = $post_id ? get_post( $post_id ) : null;
 
 		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
-		$diff = get_transient( $transient_key );
-		$diff = is_array( $diff ) ? $diff : null;
-		$sync_state = WPGS_Sync_Meta::get( (int) $post_id );
+		$diff          = get_transient( $transient_key );
+		$diff          = is_array( $diff ) ? $diff : null;
+
+		$sync_state     = $post_id > 0 ? WPGS_Sync_Meta::get( (int) $post_id ) : [];
 		$has_sync_state = false;
 		foreach ( $sync_state as $sync_value ) {
 			if ( '' !== trim( (string) $sync_value ) ) {
@@ -2004,9 +1326,6 @@ final class WPGS_Admin {
 			}
 		}
 
-		$edit_link = get_edit_post_link( (int) $post_id, 'raw' );
-		$action_url = admin_url( 'admin-post.php' );
-
 		$content_changed = (bool) ( $diff['content_changed'] ?? false );
 		$post_changed    = (bool) ( $diff['post_changed'] ?? false );
 		$meta_changed    = (bool) ( $diff['meta_changed'] ?? false );
@@ -2014,10 +1333,15 @@ final class WPGS_Admin {
 		$content_status_class = $has_diff ? ( $content_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
 		$post_status_class    = $has_diff ? ( $post_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
 		$meta_status_class    = $has_diff ? ( $meta_changed ? 'is-red' : 'is-green' ) : 'is-neutral';
-		$post_type_obj = get_post_type_object( (string) $post->post_type );
-		$post_card_title = ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) && '' !== (string) $post_type_obj->labels->singular_name )
-			? (string) $post_type_obj->labels->singular_name
-			: ucfirst( (string) $post->post_type );
+
+		$post_card_title = '';
+		if ( $post instanceof WP_Post ) {
+			$post_type_obj = get_post_type_object( (string) $post->post_type );
+			$post_card_title = ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) && '' !== (string) $post_type_obj->labels->singular_name )
+				? (string) $post_type_obj->labels->singular_name
+				: ucfirst( (string) $post->post_type );
+		}
+
 		$content_file_url = '';
 		$post_file_url    = '';
 		$meta_file_url    = '';
@@ -2049,365 +1373,29 @@ final class WPGS_Admin {
 			);
 		}
 
-		?>
-		<div class="wrap wpgs-diff-wrap">
-			<h1>WP Git Sync</h1>
-			<?php self::render_primary_tabs( 'diff', (int) $post_id ); ?>
-			<div class="wpgs-overview-grid">
-				<article class="wpgs-card wpgs-post-card">
-					<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
-					<dl class="wpgs-detail-grid wpgs-post-sync-grid">
-						<div class="wpgs-detail-row">
-							<dt>Title</dt>
-							<dd><?php echo esc_html( (string) $post->post_title ); ?></dd>
-						</div>
-						<div class="wpgs-detail-row">
-							<dt>ID</dt>
-							<dd><code><?php echo (int) $post_id; ?></code></dd>
-						</div>
-						<?php if ( $has_sync_state ) : ?>
-							<div class="wpgs-detail-row">
-								<dt>Repo</dt>
-								<dd><code><?php echo esc_html( (string) ( $sync_state['repo'] ?? '' ) ); ?></code></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Branch</dt>
-								<dd><code><?php echo esc_html( (string) ( $sync_state['branch'] ?? '' ) ); ?></code></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Content path</dt>
-								<dd>
-									<?php if ( '' !== $content_file_url ) : ?>
-										<a href="<?php echo esc_url( $content_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['content_path'] ?? '' ) ); ?></code></a>
-									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $sync_state['content_path'] ?? '' ) ); ?></code>
-									<?php endif; ?>
-								</dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Post path</dt>
-								<dd>
-									<?php if ( '' !== $post_file_url ) : ?>
-										<a href="<?php echo esc_url( $post_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['post_path'] ?? '' ) ); ?></code></a>
-									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $sync_state['post_path'] ?? '' ) ); ?></code>
-									<?php endif; ?>
-								</dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Meta path</dt>
-								<dd>
-									<?php if ( '' !== $meta_file_url ) : ?>
-										<a href="<?php echo esc_url( $meta_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['meta_path'] ?? '' ) ); ?></code></a>
-									<?php else : ?>
-										<code><?php echo esc_html( (string) ( $sync_state['meta_path'] ?? '' ) ); ?></code>
-									<?php endif; ?>
-								</dd>
-							</div>
-						<?php endif; ?>
-					</dl>
-					<div class="wpgs-action-row wpgs-post-action-row">
-						<?php if ( $edit_link ) : ?>
-							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
-						<?php endif; ?>
-						<?php if ( $has_sync_state ) : ?>
-							<form method="post" action="<?php echo esc_url( $action_url ); ?>">
-								<input type="hidden" name="action" value="wpgs_check_post" />
-								<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-								<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
-								<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
-							</form>
-						<?php endif; ?>
-					</div>
-				</article>
-			</div>
-
-			<?php if ( $has_diff ) : ?>
-				<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
-					<a id="wpgs-tab-check-link" href="#wpgs-tab-check" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-check" aria-controls="wpgs-tab-check" aria-selected="true">Check</a>
-					<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
-					<a id="wpgs-tab-post-link" href="#wpgs-tab-post" class="nav-tab" role="tab" data-tab="wpgs-tab-post" aria-controls="wpgs-tab-post" aria-selected="false">Post <span class="wpgs-tab-light <?php echo esc_attr( $post_status_class ); ?>" aria-hidden="true"></span></a>
-					<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
-				</nav>
-
-				<section id="wpgs-tab-check" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-check-link">
-					<article class="wpgs-card">
-						<h2 class="wpgs-card-title">Latest check</h2>
-						<dl class="wpgs-detail-grid">
-							<div class="wpgs-detail-row">
-								<dt>Checked at</dt>
-								<dd><?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Content changed</dt>
-								<dd><?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Post changed</dt>
-								<dd><?php echo esc_html( $post_changed ? 'Yes' : 'No' ); ?></dd>
-							</div>
-							<div class="wpgs-detail-row">
-								<dt>Meta changed</dt>
-								<dd><?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?></dd>
-							</div>
-						</dl>
-						<?php if ( $content_changed || $post_changed || $meta_changed ) : ?>
-							<div class="wpgs-action-row wpgs-check-import-row">
-								<?php if ( $content_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post content using the remote content file. Continue?');">
-										<input type="hidden" name="action" value="wpgs_pull_post" />
-										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Content', 'secondary', 'submit', false ); ?>
-									</form>
-								<?php endif; ?>
-								<?php if ( $post_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post table fields using the remote post JSON. Continue?');">
-										<input type="hidden" name="action" value="wpgs_pull_post_data" />
-										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_data_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Post Data', 'secondary', 'submit', false ); ?>
-									</form>
-								<?php endif; ?>
-								<?php if ( $meta_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will replace local post meta using the remote meta JSON. Continue?');">
-										<input type="hidden" name="action" value="wpgs_pull_post_meta" />
-										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
-										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_meta_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Meta Data', 'secondary', 'submit', false ); ?>
-									</form>
-								<?php endif; ?>
-							</div>
-						<?php endif; ?>
-					</article>
-				</section>
-
-				<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
-					<?php if ( ! $content_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php
-								// wp_text_diff() returns HTML.
-								echo (string) ( $diff['content_diff'] ?? '' );
-							?>
-						</div>
-					<?php endif; ?>
-				</section>
-
-				<section id="wpgs-tab-post" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-post-link" hidden>
-					<?php if ( ! $post_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php echo (string) ( $diff['post_diff'] ?? '' ); ?>
-						</div>
-					<?php endif; ?>
-				</section>
-
-				<section id="wpgs-tab-meta" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-meta-link" hidden>
-					<?php if ( ! $meta_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
-					<?php else : ?>
-						<div class="wpgs-diff-output wpgs-diff-surface">
-							<?php echo (string) ( $diff['meta_diff'] ?? '' ); ?>
-						</div>
-					<?php endif; ?>
-				</section>
-			<?php else : ?>
-				<article class="wpgs-card wpgs-check-state-card">
-					<h2 class="wpgs-card-title">Check</h2>
-					<?php if ( $has_sync_state ) : ?>
-						<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
-					<?php else : ?>
-						<p class="description">No sync metadata found yet. Export this post first to enable checks.</p>
-					<?php endif; ?>
-				</article>
-			<?php endif; ?>
-			<style>
-				.wpgs-overview-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-					gap: 14px;
-				}
-				.wpgs-card {
-					background: #fff;
-					border: 1px solid #dcdcde;
-					border-radius: 8px;
-					padding: 14px 16px;
-					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-				}
-				.wpgs-post-card {
-					margin-top: 12px;
-				}
-				.wpgs-card-title {
-					margin: 0 0 10px;
-					font-size: 16px;
-					line-height: 1.4;
-				}
-					.wpgs-detail-grid {
-						margin: 0;
-						display: grid;
-						gap: 8px;
-					}
-					.wpgs-detail-row {
-						display: grid;
-						grid-template-columns: 120px minmax(0, 1fr);
-						align-items: start;
-						column-gap: 10px;
-					}
-					.wpgs-detail-row dt {
-						margin: 0;
-						font-weight: 600;
-						color: #50575e;
-					}
-					.wpgs-detail-row dd {
-						margin: 0;
-					}
-					.wpgs-detail-row dd code {
-						word-break: break-word;
-						white-space: pre-wrap;
-					}
-					@media (max-width: 782px) {
-						.wpgs-detail-row {
-							grid-template-columns: 1fr;
-							row-gap: 2px;
-						}
-					}
-				.wpgs-action-row {
-					display: flex;
-					gap: 8px;
-					flex-wrap: wrap;
-					align-items: center;
-				}
-				.wpgs-action-row p,
-				.wpgs-action-row form {
-					margin: 0;
-				}
-				.wpgs-post-action-row {
-					margin-top: 12px;
-				}
-				.wpgs-check-import-row {
-					margin-top: 12px;
-				}
-				.wpgs-tab-panel {
-					margin-top: 16px;
-				}
-				.wpgs-check-state-card {
-					margin-top: 16px;
-				}
-				.wpgs-tab-panel[hidden] {
-					display: none !important;
-				}
-				.wpgs-diff-output {
-					overflow-x: auto;
-				}
-				.wpgs-empty-panel {
-					background: #fff;
-					border: 1px solid #dcdcde;
-					border-radius: 8px;
-					padding: 12px 14px;
-				}
-				.wpgs-diff-surface {
-					background: #fff;
-					border: 1px solid #ccd0d4;
-					border-radius: 8px;
-					padding: 10px;
-					box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
-				}
-				.wpgs-diff-surface .diff {
-					margin: 0;
-					background: #fff;
-					font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-				}
-				.wpgs-diff-surface .diff td,
-				.wpgs-diff-surface .diff th,
-				.wpgs-diff-surface .diff pre {
-					font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-					font-size: 12px;
-					line-height: 1.5;
-				}
-				.wpgs-diff-surface .diff pre {
-					margin: 0;
-					white-space: pre-wrap;
-					word-break: break-word;
-				}
-				.wpgs-tab-light {
-					display: inline-block;
-					width: 10px;
-					height: 10px;
-					margin-left: 6px;
-					border-radius: 50%;
-					vertical-align: middle;
-					border: 1px solid rgba(0, 0, 0, 0.18);
-				}
-				.wpgs-tab-light.is-green {
-					background: #46b450;
-				}
-				.wpgs-tab-light.is-red {
-					background: #dc3232;
-				}
-				.wpgs-tab-light.is-neutral {
-					background: #b5bcc2;
-				}
-			</style>
-			<script>
-				(function () {
-					var tabWrapper = document.getElementById('wpgs-diff-tabs');
-					if (!tabWrapper) {
-						return;
-					}
-					var tabs = tabWrapper.querySelectorAll('[data-tab]');
-					var panels = document.querySelectorAll('.wpgs-tab-panel');
-
-					function activate(tabId, updateHash) {
-						var hasMatch = false;
-						for (var x = 0; x < tabs.length; x++) {
-							if (tabs[x].getAttribute('data-tab') === tabId) {
-								hasMatch = true;
-								break;
-							}
-						}
-						if (!hasMatch && tabs.length) {
-							tabId = tabs[0].getAttribute('data-tab');
-						}
-
-						for (var i = 0; i < tabs.length; i++) {
-							var isActive = tabs[i].getAttribute('data-tab') === tabId;
-							tabs[i].classList.toggle('nav-tab-active', isActive);
-							tabs[i].setAttribute('aria-selected', isActive ? 'true' : 'false');
-						}
-
-						for (var j = 0; j < panels.length; j++) {
-							var panelIsActive = panels[j].id === tabId;
-							panels[j].classList.toggle('is-active', panelIsActive);
-							if (panelIsActive) {
-								panels[j].removeAttribute('hidden');
-							} else {
-								panels[j].setAttribute('hidden', 'hidden');
-							}
-						}
-
-						if (updateHash) {
-							window.location.hash = tabId;
-						}
-					}
-
-					for (var i = 0; i < tabs.length; i++) {
-						tabs[i].addEventListener('click', function (event) {
-							event.preventDefault();
-							activate(this.getAttribute('data-tab'), true);
-						});
-					}
-
-					var initialHash = window.location.hash ? window.location.hash.substring(1) : '';
-					if (initialHash) {
-						activate(initialHash, false);
-					}
-				})();
-			</script>
-		</div>
-		<?php
+		WPGS_Admin_Page_Diff::render(
+			[
+				'post'                 => $post,
+				'post_id'              => (int) $post_id,
+				'overview_url'         => self::tools_page_url(),
+				'has_sync_state'       => $has_sync_state,
+				'has_diff'             => $has_diff,
+				'edit_link'            => get_edit_post_link( (int) $post_id, 'raw' ),
+				'action_url'           => admin_url( 'admin-post.php' ),
+				'post_card_title'      => $post_card_title,
+				'content_file_url'     => $content_file_url,
+				'post_file_url'        => $post_file_url,
+				'meta_file_url'        => $meta_file_url,
+				'sync_state'           => $sync_state,
+				'diff'                 => $diff,
+				'content_changed'      => $content_changed,
+				'post_changed'         => $post_changed,
+				'meta_changed'         => $meta_changed,
+				'content_status_class' => $content_status_class,
+				'post_status_class'    => $post_status_class,
+				'meta_status_class'    => $meta_status_class,
+			]
+		);
 	}
 
 	/**
@@ -2590,36 +1578,14 @@ final class WPGS_Admin {
 			]
 		);
 
-		$status = $synced ? 'Synced' : 'Not synced yet';
-		?>
-		<p><strong>Status:</strong> <?php echo esc_html( $status ); ?></p>
-		<?php if ( $synced ) : ?>
-			<p><strong>Repo:</strong><br /><code><?php echo esc_html( $state['repo'] ); ?></code></p>
-			<p><strong>Branch:</strong><br /><code><?php echo esc_html( $state['branch'] ); ?></code></p>
-			<p><strong>Content path:</strong><br /><code><?php echo esc_html( $state['content_path'] ); ?></code></p>
-			<p><strong>Post path:</strong><br /><code><?php echo esc_html( $state['post_path'] ); ?></code></p>
-			<?php if ( '' !== $file_url ) : ?>
-				<p><strong>Repo file:</strong><br /><a href="<?php echo esc_url( $file_url ); ?>" target="_blank" rel="noopener noreferrer">Open on GitHub</a></p>
-			<?php endif; ?>
-			<p><strong>Last commit:</strong><br /><code><?php echo esc_html( $state['last_commit'] ); ?></code></p>
-			<p><strong>Last synced:</strong><br /><?php echo esc_html( $state['last_synced_at'] ); ?></p>
-		<?php endif; ?>
-		<?php if ( ! empty( $state['last_error'] ) ) : ?>
-			<p><strong>Last error:</strong><br /><code style="white-space:pre-wrap;display:block;"><?php echo esc_html( $state['last_error'] ); ?></code></p>
-		<?php endif; ?>
-
-		<?php if ( ! current_user_can( 'manage_options' ) ) : ?>
-			<p class="description">Only administrators can export/sync content.</p>
-		<?php else : ?>
-			<p><a class="button button-secondary" href="<?php echo esc_url( $diff_url ); ?>">Check for changes</a></p>
-
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:6px;">
-				<input type="hidden" name="action" value="wpgs_export_post" />
-				<input type="hidden" name="post_id" value="<?php echo (int) $post->ID; ?>" />
-				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_export_post_' . (int) $post->ID ) ); ?>" />
-				<?php submit_button( 'Sync this post now', 'secondary', 'submit', false ); ?>
-			</form>
-		<?php endif; ?>
-		<?php
+		WPGS_Admin_Metabox::render(
+			$post,
+			[
+				'state'    => $state,
+				'synced'   => $synced,
+				'file_url' => $file_url,
+				'diff_url' => $diff_url,
+			]
+		);
 	}
 }
