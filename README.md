@@ -52,7 +52,7 @@ define( 'WPGS_GITHUB_PAT', 'github_pat_...' );
 ```
 
 Settings mode:
-- In **Settings → Git Sync**, paste the token into **GitHub PAT token**
+- In **Settings → WP Git Sync**, paste the token into **GitHub PAT token**
 - Save settings
 - After PAT is saved, the **GitHub repo** field appears as a dropdown populated from your accessible repos
 
@@ -70,11 +70,11 @@ Required permissions for the selected repo:
 
 1. Install the plugin (copy into `wp-content/plugins/wp-git-sync/`).
 2. Activate it in WordPress.
-3. Go to **Settings → Git Sync** and set:
+3. Go to **Settings → WP Git Sync** and set:
    - GitHub PAT token (or set `WPGS_GITHUB_PAT` in `wp-config.php`)
    - GitHub repo (from dropdown)
    - Branch
-4. Go to **Tools → Git Sync** and click **Export all posts/pages now**.
+4. Go to **Tools → WP Git Sync** and click **Export all posts/pages now**.
 
 ## Notes
 
