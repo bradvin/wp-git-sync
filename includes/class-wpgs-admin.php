@@ -954,13 +954,13 @@ final class WPGS_Admin {
 		$paths = WPGS_Diff::paths_for_post( $post );
 		$local = WPGS_Diff::build_local_payload( $post );
 
-			try {
-				$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
-				$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
-				$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
-			} catch ( Throwable $e ) {
-				throw new RuntimeException( 'Unable to fetch remote files for diff: ' . sanitize_text_field( $e->getMessage() ), 0, $e );
-			}
+		try {
+			$remote_content = $provider->get_file_contents( $branch, $paths['content_path'] );
+			$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
+			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
+		} catch ( Throwable $e ) {
+			throw new RuntimeException( 'Unable to fetch remote files for diff: ' . esc_html( $e->getMessage() ) );
+		}
 
 		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
 		$local_content_n  = WPGS_Diff::normalize_newlines( (string) $local['content'] );
@@ -1031,13 +1031,13 @@ final class WPGS_Admin {
 	 * @param string $label Payload label for errors.
 	 * @return array<mixed>
 	 */
-		private static function decode_json_array_payload( string $json, string $label ): array {
-			$decoded = json_decode( $json, true );
-			if ( ! is_array( $decoded ) ) {
-				throw new RuntimeException( sprintf( 'Unable to decode remote %s JSON.', sanitize_text_field( $label ) ) );
-			}
-			return $decoded;
+	private static function decode_json_array_payload( string $json, string $label ): array {
+		$decoded = json_decode( $json, true );
+		if ( ! is_array( $decoded ) ) {
+			throw new RuntimeException( sprintf( 'Unable to decode remote %s JSON.', esc_html( $label ) ) );
 		}
+		return $decoded;
+	}
 
 	/**
 	 * Apply imported post-table data to a local post.
@@ -1081,11 +1081,11 @@ final class WPGS_Admin {
 			return;
 		}
 
-			$res = wp_update_post( $update, true );
-			if ( is_wp_error( $res ) ) {
-				throw new RuntimeException( sanitize_text_field( $res->get_error_message() ) );
-			}
+		$res = wp_update_post( $update, true );
+		if ( is_wp_error( $res ) ) {
+			throw new RuntimeException( esc_html( $res->get_error_message() ) );
 		}
+	}
 
 	/**
 	 * Apply imported post meta payload to a local post.
