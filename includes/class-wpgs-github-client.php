@@ -65,12 +65,12 @@ final class WPGS_GitHub_Client {
 
 		$res = wp_remote_request( $url, $args );
 		if ( is_wp_error( $res ) ) {
-			$error_message = sanitize_text_field( $res->get_error_message() );
+			$error_message = esc_html( $res->get_error_message() );
 			throw new RuntimeException(
 				sprintf(
 					'GitHub API transport failed during %s %s: %s',
-					sanitize_text_field( $method ),
-					sanitize_text_field( $endpoint ),
+					esc_html( $method ),
+					esc_html( $endpoint ),
 					$error_message
 				)
 			);
@@ -119,12 +119,12 @@ final class WPGS_GitHub_Client {
 
 			throw new RuntimeException(
 				sprintf(
-					'GitHub API request failed (%d) during %s %s: %s%s',
-					$code,
-					sanitize_text_field( $method ),
-					sanitize_text_field( $endpoint ),
-					sanitize_text_field( $message ),
-					sanitize_text_field( $detail )
+					'GitHub API request failed (%s) during %s %s: %s%s',
+					esc_html( (string) $code ),
+					esc_html( $method ),
+					esc_html( $endpoint ),
+					esc_html( $message ),
+					esc_html( $detail )
 				)
 			);
 		}
