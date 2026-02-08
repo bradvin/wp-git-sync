@@ -1,0 +1,75 @@
+name: Build Plugin ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP and Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer:v2
+
+      - name: Build ZIP
+        id: build
+        run: |
+          set -euo pipefail
+
+          PLUGIN_SLUG="$(basename "$GITHUB_WORKSPACE")"
+          BUILD_ROOT="$RUNNER_TEMP/plugin-build"
+          STAGING_DIR="$BUILD_ROOT/$PLUGIN_SLUG"
+          ZIP_PATH="$RUNNER_TEMP/${PLUGIN_SLUG}.zip"
+
+          mkdir -p "$STAGING_DIR"
+
+          rsync -a ./ "$STAGING_DIR"/ \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'reports/' \
+            --exclude '.phpstan-cache/' \
+            --exclude '.DS_Store' \
+            --exclude '.idea/' \
+            --exclude '.vscode/' \
+            --exclude 'node_modules/' \
+            --exclude 'tests/'
+
+          if [ -f "$STAGING_DIR/composer.json" ]; then
+            rm -rf "$STAGING_DIR/vendor"
+            (
+              cd "$STAGING_DIR"
+              composer install \
+                --no-dev \
+                --no-interaction \
+                --no-progress \
+                --prefer-dist \
+                --optimize-autoloader
+            )
+          fi
+
+          (
+            cd "$BUILD_ROOT"
+            zip -r "$ZIP_PATH" "$PLUGIN_SLUG"
+          )
+
+          echo "plugin_slug=$PLUGIN_SLUG" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ZIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.plugin_slug }}-zip
+          path: ${{ steps.build.outputs.zip_path }}
+          if-no-files-found: error
