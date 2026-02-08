@@ -1,0 +1,22 @@
+{
+  "name": "WP Git Sync",
+  "slug": "WP-git-sync",
+  "version": "0.1.0",
+  "description": "Sync WordPress content and metadata to GitHub.",
+  "type": "wordpress-plugin",
+  "author": "Foo Bender",
+  "contributors": [
+    "bradvin",
+    "foobender"
+  ],
+  "license": "GPL-2.0-or-later",
+  "requires": {
+    "wordpress": "6.4",
+    "php": ">=7.4"
+  },
+  "tested_up_to": "6.9",
+  "build": {
+    "output_dir": "dist",
+    "zip_name_template": "{slug}-{version}.zip"
+  }
+}

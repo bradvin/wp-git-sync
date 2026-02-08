@@ -11,6 +11,7 @@
     },
     "scripts": {
         "phpstan": "phpstan analyse -c phpstan.neon.dist --memory-limit=1G --no-progress --debug",
-        "phpstan:baseline": "phpstan analyse -c phpstan.neon.dist --generate-baseline=phpstan-baseline.neon --no-progress --debug"
+        "phpstan:baseline": "phpstan analyse -c phpstan.neon.dist --generate-baseline=phpstan-baseline.neon --no-progress --debug",
+        "build:zip": "bash scripts/build-zip.sh"
     }
 }

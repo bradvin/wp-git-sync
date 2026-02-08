@@ -29,15 +29,24 @@ jobs:
           set -euo pipefail
 
           PLUGIN_SLUG="$(basename "$GITHUB_WORKSPACE")"
-          ZIP_PATH="$GITHUB_WORKSPACE/dist/${PLUGIN_SLUG}.zip"
+          PLUGIN_VERSION="$(php -r '
+          $json = json_decode(file_get_contents($argv[1]), true);
+          if (!is_array($json) || empty($json["version"]) || !is_string($json["version"])) {
+            fwrite(STDERR, "packages.json is missing a valid version string\n");
+            exit(1);
+          }
+          echo $json["version"];
+          ' "$GITHUB_WORKSPACE/packages.json")"
+          ZIP_PATH="$GITHUB_WORKSPACE/dist/${PLUGIN_SLUG}-${PLUGIN_VERSION}.zip"
 
           bash "$GITHUB_WORKSPACE/scripts/build-zip.sh"
           echo "plugin_slug=$PLUGIN_SLUG" >> "$GITHUB_OUTPUT"
+          echo "plugin_version=$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build.outputs.plugin_slug }}-zip
+          name: ${{ steps.build.outputs.plugin_slug }}-${{ steps.build.outputs.plugin_version }}-zip
           path: ${{ steps.build.outputs.zip_path }}
           if-no-files-found: error

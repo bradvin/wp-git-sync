@@ -4,11 +4,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_SLUG="$(basename "$ROOT_DIR")"
+PACKAGE_FILE="$ROOT_DIR/packages.json"
+
+if [ ! -f "$PACKAGE_FILE" ]; then
+  echo "Missing $PACKAGE_FILE. Cannot determine plugin version for ZIP name." >&2
+  exit 1
+fi
+
+PLUGIN_VERSION="$(php -r '
+$file = $argv[1];
+$json = json_decode(file_get_contents($file), true);
+if (!is_array($json) || empty($json["version"]) || !is_string($json["version"])) {
+    fwrite(STDERR, "packages.json is missing a valid version string\n");
+    exit(1);
+}
+echo $json["version"];
+' "$PACKAGE_FILE")"
 
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/wpgs-build.XXXXXX")"
 STAGING_DIR="$BUILD_ROOT/$PLUGIN_SLUG"
 DIST_DIR="$ROOT_DIR/dist"
-ZIP_PATH="$DIST_DIR/${PLUGIN_SLUG}.zip"
+ZIP_PATH="$DIST_DIR/${PLUGIN_SLUG}-${PLUGIN_VERSION}.zip"
 
 cleanup() {
   rm -rf "$BUILD_ROOT"
