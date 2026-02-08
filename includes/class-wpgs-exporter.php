@@ -450,16 +450,16 @@ final class WPGS_Exporter {
 			$groups[ $post_type ][] = $row;
 		}
 
-		ksort( $groups );
-		foreach ( $groups as $post_type => $rows ) {
-			usort(
-				$rows,
-				static function ( array $a, array $b ): int {
-					return strcmp( (string) ( $a['sort'] ?? '' ), (string) ( $b['sort'] ?? '' ) );
-				}
-			);
-			$groups[ $post_type ] = $rows;
-		}
+			ksort( $groups );
+			foreach ( $groups as $post_type => $rows ) {
+				usort(
+					$rows,
+					static function ( array $a, array $b ): int {
+						return strcmp( (string) $a['sort'], (string) $b['sort'] );
+					}
+				);
+				$groups[ $post_type ] = $rows;
+			}
 
 		$out   = [];
 		$out[] = '# WP Git Sync Index';
@@ -483,7 +483,7 @@ final class WPGS_Exporter {
 				$out[] = '| Post | Post JSON | Meta JSON | Content |';
 				$out[] = '| --- | --- | --- | --- |';
 				foreach ( $rows as $row ) {
-					$out[] = (string) ( $row['line'] ?? '' );
+					$out[] = (string) $row['line'];
 				}
 				$out[] = '';
 			}
