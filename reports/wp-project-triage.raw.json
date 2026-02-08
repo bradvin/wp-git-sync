@@ -1,0 +1,108 @@
+{
+  "tool": {
+    "name": "detect_wp_project",
+    "version": "0.1.0"
+  },
+  "project": {
+    "kind": [
+      "wp-plugin"
+    ],
+    "primary": "wp-plugin",
+    "notes": []
+  },
+  "signals": {
+    "paths": {
+      "repoRoot": "/Users/brad/Local Sites/foo/app/public/wp-content/plugins/WP-git-sync",
+      "wpContent": null,
+      "pluginsDir": null,
+      "themesDir": null,
+      "muPluginsDir": null
+    },
+    "isWpCoreCheckout": false,
+    "isGutenbergRepo": false,
+    "hasWpContentDir": false,
+    "hasPluginsDir": false,
+    "hasThemesDir": false,
+    "hasMuPluginsDir": false,
+    "detectedPluginName": "WP Git Sync",
+    "detectedThemeName": null,
+    "isBlockPlugin": false,
+    "isBlockTheme": false,
+    "usesInteractivityApi": false,
+    "usesAbilitiesApi": false,
+    "usesInnerBlocks": false,
+    "usesWpCli": false,
+    "performanceHints": {
+      "wpConfig": null,
+      "constants": {},
+      "dropins": {
+        "objectCache": false,
+        "advancedCache": false,
+        "db": false,
+        "sunrise": false
+      },
+      "plugins": {
+        "queryMonitor": false,
+        "performanceLab": false
+      }
+    },
+    "interactivityHints": {
+      "packageJson": false,
+      "matches": {},
+      "scanTruncated": false
+    },
+    "abilitiesHints": {
+      "packageJson": false,
+      "matches": {},
+      "scanTruncated": false
+    },
+    "innerBlocksHints": {
+      "matches": {},
+      "scanTruncated": false
+    },
+    "wpCliHints": {
+      "configFiles": [],
+      "configScanTruncated": false,
+      "composerJson": false,
+      "matches": {},
+      "scanTruncated": false
+    },
+    "blockJsonFiles": [],
+    "themeJsonFiles": [],
+    "scanTruncated": false
+  },
+  "tooling": {
+    "php": {
+      "hasComposerJson": false,
+      "hasVendorDir": false,
+      "phpunitXml": []
+    },
+    "node": {
+      "hasPackageJson": false,
+      "packageManager": null,
+      "usesWordpressScripts": false
+    },
+    "tests": {
+      "hasPhpUnit": false,
+      "hasWpEnv": false,
+      "hasPlaywright": false,
+      "hasJest": false
+    }
+  },
+  "versions": {
+    "wordpress": {
+      "core": {
+        "value": null,
+        "source": null
+      }
+    },
+    "gutenberg": {
+      "value": null,
+      "source": null
+    }
+  },
+  "recommendations": {
+    "commands": [],
+    "notes": []
+  }
+}

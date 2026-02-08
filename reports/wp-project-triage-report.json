@@ -1,0 +1,65 @@
+{
+  "tool": {
+    "name": "wp-project-triage",
+    "mode": "detector-plus-supplement",
+    "detector": {
+      "script": "/Users/brad/.agents/skills/wp-project-triage/scripts/detect_wp_project.mjs",
+      "raw_report": "/Users/brad/Local Sites/foo/app/public/wp-content/plugins/WP-git-sync/reports/wp-project-triage.raw.json",
+      "raw_primary": "wp-plugin"
+    }
+  },
+  "generated_at": "2026-02-08T13:10:12Z",
+  "target": {
+    "repo_root": "/Users/brad/Local Sites/foo/app/public/wp-content/plugins/WP-git-sync"
+  },
+  "project": {
+    "kind": [
+      "wp-plugin"
+    ],
+    "primary": "wp-plugin",
+    "notes": [
+      "Classified as plugin based on header in wp-git-sync.php."
+    ]
+  },
+  "signals": {
+    "plugin_header": {
+      "file": "wp-git-sync.php",
+      "name": "WP Git Sync",
+      "version": "0.1.0",
+      "requires_wp": "6.4",
+      "requires_php": "7.4"
+    },
+    "structure": {
+      "has_admin_folder": true,
+      "has_includes_folder": true,
+      "main_plugin_file": "wp-git-sync.php"
+    }
+  },
+  "tooling": {
+    "php": {
+      "hasComposerJson": false,
+      "hasVendorDir": false,
+      "phpunitXml": []
+    },
+    "node": {
+      "hasPackageJson": false,
+      "packageManager": null,
+      "usesWordpressScripts": false
+    },
+    "tests": {
+      "hasPhpUnit": false,
+      "hasWpEnv": false,
+      "hasPlaywright": false,
+      "hasJest": false
+    }
+  },
+  "recommendations": {
+    "commands": [
+      "php -l /Users/brad/Local Sites/foo/app/public/wp-content/plugins/WP-git-sync/wp-git-sync.php",
+      "php -l /Users/brad/Local Sites/foo/app/public/wp-content/plugins/WP-git-sync/includes/class-wpgs-admin.php"
+    ],
+    "notes": [
+      "No Composer/Node test toolchain detected in repo root."
+    ]
+  }
+}
