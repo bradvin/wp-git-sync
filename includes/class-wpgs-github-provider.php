@@ -53,8 +53,8 @@ final class WPGS_GitHub_Provider {
 			throw new RuntimeException(
 				sprintf(
 					'Unable to decode blob content from GitHub for "%s" (sha: %s).',
-					sanitize_text_field( $path ),
-					sanitize_text_field( $blob_sha )
+					esc_html( $path ),
+					esc_html( $blob_sha )
 				)
 			);
 		}
@@ -63,8 +63,8 @@ final class WPGS_GitHub_Provider {
 		throw new RuntimeException(
 			sprintf(
 				'Unable to decode file from GitHub for "%s" (encoding: %s).',
-				sanitize_text_field( $path ),
-				sanitize_text_field( $encoding )
+				esc_html( $path ),
+				esc_html( $encoding )
 			)
 		);
 	}
@@ -413,15 +413,13 @@ final class WPGS_GitHub_Provider {
 			return [ 'commit_sha' => $new_commit ];
 		} catch ( Throwable $e ) {
 			if ( ! $this->is_empty_repo_error( $e ) ) {
-					throw new RuntimeException(
-						sprintf(
-							'GitHub commit pipeline failed at step "%s": %s',
-							sanitize_text_field( $step ),
-							sanitize_text_field( $e->getMessage() )
-						),
-						0,
-						$e
-					);
+				throw new RuntimeException(
+					sprintf(
+						'GitHub commit pipeline failed at step "%s": %s',
+						esc_html( $step ),
+						esc_html( $e->getMessage() )
+					)
+				);
 			}
 
 			// Last-resort bootstrap for empty repos if any earlier step still returned 409.
@@ -429,15 +427,13 @@ final class WPGS_GitHub_Provider {
 				$step = 'bootstrap_empty_repo';
 				return $this->bootstrap_empty_repo( $branch, $message, $files );
 			} catch ( Throwable $bootstrap_error ) {
-					throw new RuntimeException(
-						sprintf(
-							'GitHub commit pipeline failed at step "%s": %s',
-							sanitize_text_field( $step ),
-							sanitize_text_field( $bootstrap_error->getMessage() )
-						),
-						0,
-						$bootstrap_error
-					);
+				throw new RuntimeException(
+					sprintf(
+						'GitHub commit pipeline failed at step "%s": %s',
+						esc_html( $step ),
+						esc_html( $bootstrap_error->getMessage() )
+					)
+				);
 			}
 		}
 	}
