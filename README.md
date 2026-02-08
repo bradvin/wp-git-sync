@@ -11,8 +11,6 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Sync WordPress content and metadata to GitHub.
 
-> Status: active development. As of Feb 2026 the plugin is **GitHub API-only** (no `proc_open`, no `git` CLI) and uses **fine-grained PAT** auth.
-
 ## What it does
 
 - Configures a GitHub repo (`owner` + `repo`) + branch (default: `main`)
