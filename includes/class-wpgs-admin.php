@@ -142,12 +142,35 @@ final class WPGS_Admin {
 	}
 
 	/**
+	 * Read a raw query-string value from INPUT_GET.
+	 *
+	 * @param string $key Query-string key.
+	 * @param string $default Default value when key is not present.
+	 * @return string
+	 */
+	private static function get_query_string( string $key, string $default = '' ): string {
+		$value = filter_input( INPUT_GET, $key, FILTER_UNSAFE_RAW );
+		return is_string( $value ) ? $value : $default;
+	}
+
+	/**
+	 * Read an integer query-string value from INPUT_GET.
+	 *
+	 * @param string $key Query-string key.
+	 * @return int
+	 */
+	private static function get_query_int( string $key ): int {
+		$value = filter_input( INPUT_GET, $key, FILTER_VALIDATE_INT );
+		return ( false === $value || null === $value ) ? 0 : (int) $value;
+	}
+
+	/**
 	 * Read the active top-level tab.
 	 *
 	 * @return string One of: overview, diff, settings.
 	 */
 	private static function current_tab(): string {
-		$tab = isset( $_GET['tab'] ) ? sanitize_key( (string) $_GET['tab'] ) : 'overview';
+		$tab = sanitize_key( self::get_query_string( 'tab', 'overview' ) );
 		if ( ! in_array( $tab, [ 'overview', 'diff', 'settings' ], true ) ) {
 			return 'overview';
 		}
@@ -567,7 +590,7 @@ final class WPGS_Admin {
 		$repo_url   = $repo_ready
 			? sprintf( 'https://github.com/%s/%s', rawurlencode( $owner ), rawurlencode( $repo ) )
 			: '';
-		$state      = isset( $_GET['wpgs'] ) ? sanitize_key( (string) $_GET['wpgs'] ) : '';
+		$state      = sanitize_key( self::get_query_string( 'wpgs', '' ) );
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
 		$included_post_types = self::included_post_types();
 		$post_type_tabs = $repo_ready ? self::post_type_tab_data( $included_post_types ) : [];
@@ -1310,7 +1333,7 @@ final class WPGS_Admin {
 			wp_die( 'Insufficient permissions.' );
 		}
 
-		$post_id = isset( $_GET['post_id'] ) ? (int) $_GET['post_id'] : 0;
+		$post_id = self::get_query_int( 'post_id' );
 		$post    = $post_id ? get_post( $post_id ) : null;
 
 		$transient_key = self::diff_transient_key( (int) $post_id, (int) get_current_user_id() );
