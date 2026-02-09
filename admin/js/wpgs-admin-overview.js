@@ -18,8 +18,10 @@
 	var rateLimitSummary = document.getElementById('wpgs-rate-limit-summary');
 	var controlsWrap = document.getElementById('wpgs-export-controls');
 	var resumeBtn = document.getElementById('wpgs-export-resume-btn');
-	var pauseBtn = document.getElementById('wpgs-export-pause-btn');
 	var stopBtn = document.getElementById('wpgs-export-stop-btn');
+	var setupRepoToggleBtn = document.getElementById('wpgs-setup-repo-toggle-btn');
+	var setupRepoConfirmWrap = document.getElementById('wpgs-setup-repo-confirm');
+	var setupRepoCancelBtn = document.getElementById('wpgs-setup-repo-cancel-btn');
 	var typeTabsNav = document.getElementById('wpgs-type-tabs-nav');
 	var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
 	var typePanels = document.querySelectorAll('.wpgs-type-panel');
@@ -226,10 +228,20 @@
 		var hasPendingResume = !isRunning && !!pendingResumeData;
 		var showControls = isRunning || isPaused || hasPendingResume;
 		controlsWrap.hidden = !showControls;
-		controlsWrap.style.display = showControls ? 'flex' : 'none';
+		controlsWrap.style.display = showControls ? 'inline-flex' : 'none';
 		setControlVisible(resumeBtn, isPaused || hasPendingResume);
-		setControlVisible(pauseBtn, isRunning && !isPaused && !isStopping);
 		setControlVisible(stopBtn, isRunning || isPaused || hasPendingResume);
+	}
+
+	function setSetupRepoConfirmVisible(visible) {
+		if (!setupRepoConfirmWrap) {
+			return;
+		}
+		setupRepoConfirmWrap.hidden = !visible;
+		setupRepoConfirmWrap.style.display = visible ? 'block' : 'none';
+		if (setupRepoToggleBtn) {
+			setupRepoToggleBtn.setAttribute('aria-expanded', visible ? 'true' : 'false');
+		}
 	}
 
 	function renderProgress(data) {
@@ -399,18 +411,6 @@
 			});
 	}
 
-	function pauseBatch() {
-		if (!isRunning) {
-			return;
-		}
-		isPaused = true;
-		isRunning = false;
-		pendingResumeData = latestProgressData;
-		btn.textContent = 'Export Paused';
-		refreshControlButtons();
-		progressText.textContent = progressText.textContent.replace(/\s*Export paused\.$/, '') + ' Export paused.';
-	}
-
 	function stopBatch() {
 		if (isStopping) {
 			return;
@@ -557,11 +557,19 @@
 			beginPollingWithCurrentState(pendingResumeData);
 		});
 	}
-	if (pauseBtn) {
-		pauseBtn.addEventListener('click', pauseBatch);
-	}
 	if (stopBtn) {
 		stopBtn.addEventListener('click', stopBatch);
+	}
+	if (setupRepoToggleBtn) {
+		setupRepoToggleBtn.addEventListener('click', function () {
+			var nextVisible = !setupRepoConfirmWrap || setupRepoConfirmWrap.hidden;
+			setSetupRepoConfirmVisible(nextVisible);
+		});
+	}
+	if (setupRepoCancelBtn) {
+		setupRepoCancelBtn.addEventListener('click', function () {
+			setSetupRepoConfirmVisible(false);
+		});
 	}
 
 	request('wpgs_export_batch_status')
@@ -599,4 +607,5 @@
 	for (var p = 0; p < typePanels.length; p++) {
 		updatePanelErrorState(typePanels[p]);
 	}
+	setSetupRepoConfirmVisible(false);
 })();

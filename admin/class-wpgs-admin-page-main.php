@@ -58,35 +58,44 @@ final class WPGS_Admin_Page_Main {
 
 					<div class="wpgs-action-row">
 						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer">Open Repo</a></p>
-
-						<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('Setup Repo will wipe all files on this branch. Continue?');">
-							<input type="hidden" name="action" value="wpgs_setup_repo" />
-							<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_setup_repo' ) ); ?>" />
-							<?php submit_button( 'Setup Repo', 'delete', 'submit', false ); ?>
-						</form>
-
 						<p>
-							<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
+							<button type="button" class="button button-secondary" id="wpgs-setup-repo-toggle-btn" aria-expanded="false" aria-controls="wpgs-setup-repo-confirm">Setup Repo</button>
 						</p>
 					</div>
 
+					<div id="wpgs-setup-repo-confirm" class="wpgs-setup-repo-confirm" hidden>
+						<p class="wpgs-danger-note"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
+						<div class="wpgs-setup-repo-actions">
+							<form method="post" action="<?php echo esc_url( $action_url ); ?>">
+								<input type="hidden" name="action" value="wpgs_setup_repo" />
+								<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_setup_repo' ) ); ?>" />
+								<?php submit_button( 'Confirm Setup Repo', 'wpgs-button-danger', 'submit', false ); ?>
+							</form>
+							<button type="button" class="button button-secondary" id="wpgs-setup-repo-cancel-btn">Cancel</button>
+						</div>
+					</div>
+				</div>
+
+				<div class="wpgs-overview-card wpgs-export-card">
+					<h2>Export Posts</h2>
 					<?php if ( empty( $included_post_types ) ) : ?>
 						<p class="description">No Included Post Types are selected. <a href="<?php echo esc_url( $settings_url ); ?>">Choose at least one in Settings</a>.</p>
+					<?php else : ?>
+						<p class="description">Start, resume, or stop export batches for included post types.</p>
 					<?php endif; ?>
-
+					<p class="wpgs-action-row">
+						<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
+						<span id="wpgs-export-controls" class="wpgs-export-controls" hidden>
+							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden>Resume Export</button>
+							<button type="button" class="button button-secondary" id="wpgs-export-stop-btn" hidden>Stop Export</button>
+						</span>
+					</p>
 					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
 						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
 							<span id="wpgs-export-progress-fill"></span>
 						</div>
 						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
-						<p id="wpgs-export-controls" class="wpgs-export-controls" hidden>
-							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden>Resume Export</button>
-							<button type="button" class="button button-secondary" id="wpgs-export-pause-btn" hidden>Pause Export</button>
-							<button type="button" class="button button-link-delete" id="wpgs-export-stop-btn" hidden>Stop Export</button>
-						</p>
 					</div>
-
-					<p class="description"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
 				</div>
 
 				<?php if ( ! empty( $post_type_tabs ) ) : ?>

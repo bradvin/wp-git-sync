@@ -54,6 +54,43 @@
 	margin: 0;
 }
 
+.wpgs-setup-repo-confirm {
+	margin-top: 12px;
+	padding: 12px;
+	border: 1px solid #f0c7c7;
+	border-radius: 6px;
+	background: #fff7f7;
+}
+
+.wpgs-danger-note {
+	margin: 0 0 10px;
+	color: #8a2424;
+}
+
+.wpgs-setup-repo-actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.wpgs-setup-repo-actions form {
+	margin: 0;
+}
+
+.wpgs-button-danger {
+	background: #d63638 !important;
+	border-color: #b32d2e !important;
+	color: #fff !important;
+}
+
+.wpgs-button-danger:hover,
+.wpgs-button-danger:focus {
+	background: #b32d2e !important;
+	border-color: #8f2425 !important;
+	color: #fff !important;
+}
+
 .wpgs-type-tabs-wrap {
 	margin-top: 16px;
 }
@@ -156,7 +193,7 @@
 	display: flex;
 	gap: 8px;
 	align-items: center;
-	margin: 8px 0 0;
+	margin: 0;
 }
 
 .wpgs-export-progress-bar {
