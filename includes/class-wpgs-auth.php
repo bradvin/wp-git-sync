@@ -68,7 +68,7 @@ final class WPGS_Auth {
 		$token = isset( $settings['pat_token'] ) ? (string) $settings['pat_token'] : '';
 		$token = trim( $token );
 		if ( '' === $token ) {
-			throw new RuntimeException( __( 'PAT token is not configured. Set WPGS_GITHUB_PAT in wp-config.php or save a PAT token in WP Git Sync settings.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'PAT token is not configured. Set WPGS_GITHUB_PAT in wp-config.php or save a PAT token in WP Git Sync settings.', 'wp-git-sync' ) );
 		}
 		return $token;
 	}

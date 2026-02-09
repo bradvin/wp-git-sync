@@ -41,10 +41,11 @@ final class WPGS_Admin_Page_Main {
 				<div class="notice notice-info inline"><p><?php esc_html_e( 'Export batch started. Progress appears below.', 'wp-git-sync' ); ?></p></div>
 			<?php endif; ?>
 
-			<?php if ( ! $repo_ready ) : ?>
-				<div class="notice notice-warning inline">
-					<p><?php echo wp_kses_post( sprintf( __( 'GitHub repo is not configured yet. <a href="%s">Setup a repo in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
-				</div>
+				<?php if ( ! $repo_ready ) : ?>
+					<div class="notice notice-warning inline">
+						<?php /* translators: %s: URL to plugin settings tab. */ ?>
+						<p><?php echo wp_kses_post( sprintf( __( 'GitHub repo is not configured yet. <a href="%s">Setup a repo in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
+					</div>
 			<?php else : ?>
 				<div class="wpgs-overview-card">
 					<h2><?php esc_html_e( 'Repository', 'wp-git-sync' ); ?></h2>
@@ -76,11 +77,12 @@ final class WPGS_Admin_Page_Main {
 					</div>
 				</div>
 
-				<div class="wpgs-overview-card wpgs-export-card">
-					<h2><?php esc_html_e( 'Export Posts', 'wp-git-sync' ); ?></h2>
-					<?php if ( empty( $included_post_types ) ) : ?>
-						<p class="description"><?php echo wp_kses_post( sprintf( __( 'No Included Post Types are selected. <a href="%s">Choose at least one in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
-					<?php else : ?>
+					<div class="wpgs-overview-card wpgs-export-card">
+						<h2><?php esc_html_e( 'Export Posts', 'wp-git-sync' ); ?></h2>
+						<?php if ( empty( $included_post_types ) ) : ?>
+							<?php /* translators: %s: URL to plugin settings tab. */ ?>
+							<p class="description"><?php echo wp_kses_post( sprintf( __( 'No Included Post Types are selected. <a href="%s">Choose at least one in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
+						<?php else : ?>
 						<p class="description"><?php esc_html_e( 'Start, resume, or stop export batches for included post types.', 'wp-git-sync' ); ?></p>
 					<?php endif; ?>
 					<p class="wpgs-action-row">
@@ -132,6 +134,7 @@ final class WPGS_Admin_Page_Main {
 									</p>
 									<p class="wpgs-type-action-row">
 										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" data-post-label="<?php echo esc_attr( (string) $tab['label'] ); ?>">
+											<?php /* translators: %s: Post type label. */ ?>
 											<?php echo esc_html( sprintf( __( 'Export all %s', 'wp-git-sync' ), (string) $tab['label'] ) ); ?>
 										</button>
 										<?php if ( (int) ( $tab['error_count'] ?? 0 ) > 0 ) : ?>
@@ -241,9 +244,11 @@ final class WPGS_Admin_Page_Main {
 		}
 
 		$parts = [
+			/* translators: 1: Used requests, 2: Limit, 3: Remaining requests. */
 			sprintf( __( 'GitHub rate limit: used %1$d / %2$d, remaining %3$d', 'wp-git-sync' ), $used, $limit, $remaining ),
 		];
 		if ( $reset > 0 ) {
+			/* translators: %s: UTC datetime when rate limit resets. */
 			$parts[] = sprintf( __( 'resets at %1$s UTC', 'wp-git-sync' ), gmdate( 'Y-m-d H:i:s', $reset ) );
 		}
 		return implode( ' | ', $parts );

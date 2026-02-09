@@ -76,9 +76,10 @@ final class WPGS_Admin_Page_Settings {
 									<a class="button" href="<?php echo esc_url( $refresh_repos_url ); ?>"><?php esc_html_e( 'Refresh', 'wp-git-sync' ); ?></a>
 								<?php endif; ?>
 							</div>
-							<?php if ( '' !== $repo_fetch_error ) : ?>
-								<p class="description"><?php echo esc_html( sprintf( __( 'Could not load repos from GitHub: %s', 'wp-git-sync' ), $repo_fetch_error ) ); ?></p>
-							<?php else : ?>
+								<?php if ( '' !== $repo_fetch_error ) : ?>
+									<?php /* translators: %s: Error message returned while loading GitHub repositories. */ ?>
+									<p class="description"><?php echo esc_html( sprintf( __( 'Could not load repos from GitHub: %s', 'wp-git-sync' ), $repo_fetch_error ) ); ?></p>
+								<?php else : ?>
 								<p class="description"><?php esc_html_e( 'Only repositories you can push to are listed.', 'wp-git-sync' ); ?></p>
 							<?php endif; ?>
 						</td>
@@ -97,14 +98,15 @@ final class WPGS_Admin_Page_Settings {
 								<fieldset>
 									<?php foreach ( $post_type_options as $post_type_slug => $post_type_label ) : ?>
 										<label style="display:block;margin-bottom:4px;">
-											<input
-												type="checkbox"
+												<input
+													type="checkbox"
 												name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[included_post_types][]"
 												value="<?php echo esc_attr( (string) $post_type_slug ); ?>"
 												<?php checked( in_array( (string) $post_type_slug, $included_post_types, true ) ); ?>
 											/>
-											<?php echo esc_html( sprintf( __( '%1$s (%2$s)', 'wp-git-sync' ), (string) $post_type_label, (string) $post_type_slug ) ); ?>
-										</label>
+												<?php /* translators: 1: Post type label, 2: Post type slug. */ ?>
+												<?php echo esc_html( sprintf( __( '%1$s (%2$s)', 'wp-git-sync' ), (string) $post_type_label, (string) $post_type_slug ) ); ?>
+											</label>
 									<?php endforeach; ?>
 								</fieldset>
 							<?php endif; ?>

@@ -35,12 +35,12 @@ final class WPGS_GitHub_Client {
 	 * @param string $token OAuth/PAT token.
 	 * @throws InvalidArgumentException If token is empty.
 	 */
-	public function __construct( string $token ) {
-		$this->token = trim( $token );
-		if ( '' === $this->token ) {
-			throw new InvalidArgumentException( __( 'GitHub token is missing.', 'wp-git-sync' ) );
+		public function __construct( string $token ) {
+			$this->token = trim( $token );
+			if ( '' === $this->token ) {
+				throw new InvalidArgumentException( esc_html__( 'GitHub token is missing.', 'wp-git-sync' ) );
+			}
 		}
-	}
 
 	/**
 	 * Perform a GitHub API request.
@@ -70,14 +70,15 @@ final class WPGS_GitHub_Client {
 			$args['body']                   = wp_json_encode( $body );
 		}
 
-		$res = wp_remote_request( $url, $args );
-		if ( is_wp_error( $res ) ) {
-			throw new RuntimeException(
-				sprintf(
-					__( 'GitHub API transport failed during %1$s %2$s: %3$s', 'wp-git-sync' ),
-					esc_html( $method ),
-					esc_html( $endpoint ),
-					esc_html( $res->get_error_message() )
+			$res = wp_remote_request( $url, $args );
+			if ( is_wp_error( $res ) ) {
+				throw new RuntimeException(
+					sprintf(
+						/* translators: 1: HTTP method, 2: GitHub API endpoint, 3: Transport error message. */
+						esc_html__( 'GitHub API transport failed during %1$s %2$s: %3$s', 'wp-git-sync' ),
+						esc_html( $method ),
+						esc_html( $endpoint ),
+						esc_html( $res->get_error_message() )
 				)
 			);
 		}
@@ -124,12 +125,13 @@ final class WPGS_GitHub_Client {
 				}
 			}
 
-			throw new RuntimeException(
-				sprintf(
-					__( 'GitHub API request failed (%1$s) during %2$s %3$s: %4$s%5$s', 'wp-git-sync' ),
-					esc_html( (string) $code ),
-					esc_html( $method ),
-					esc_html( $endpoint ),
+				throw new RuntimeException(
+					sprintf(
+						/* translators: 1: HTTP status code, 2: HTTP method, 3: GitHub API endpoint, 4: Error message, 5: Optional details. */
+						esc_html__( 'GitHub API request failed (%1$s) during %2$s %3$s: %4$s%5$s', 'wp-git-sync' ),
+						esc_html( (string) $code ),
+						esc_html( $method ),
+						esc_html( $endpoint ),
 					esc_html( $message ),
 					esc_html( $detail )
 				)

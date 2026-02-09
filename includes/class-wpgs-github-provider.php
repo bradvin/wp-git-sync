@@ -43,30 +43,32 @@ final class WPGS_GitHub_Provider {
 		// Fallback: some Contents API responses omit/limit inline content. In that
 		// case, decode via the Git Blob API using the file SHA.
 		$blob_sha = isset( $data['sha'] ) ? trim( (string) $data['sha'] ) : '';
-		if ( '' !== $blob_sha ) {
-			$blob = $this->client->request( 'GET', $this->api( '/git/blobs/' . rawurlencode( $blob_sha ) ) );
-			$decoded_blob = $this->decode_base64_payload( $blob );
-			if ( null !== $decoded_blob ) {
-				return $decoded_blob;
+			if ( '' !== $blob_sha ) {
+				$blob = $this->client->request( 'GET', $this->api( '/git/blobs/' . rawurlencode( $blob_sha ) ) );
+				$decoded_blob = $this->decode_base64_payload( $blob );
+				if ( null !== $decoded_blob ) {
+					return $decoded_blob;
+				}
+
+				throw new RuntimeException(
+					sprintf(
+						/* translators: 1: File path, 2: Git blob SHA. */
+						esc_html__( 'Unable to decode blob content from GitHub for "%1$s" (sha: %2$s).', 'wp-git-sync' ),
+						esc_html( $path ),
+						esc_html( $blob_sha )
+					)
+				);
 			}
 
+			$encoding = isset( $data['encoding'] ) ? (string) $data['encoding'] : 'unknown';
 			throw new RuntimeException(
 				sprintf(
-					__( 'Unable to decode blob content from GitHub for "%1$s" (sha: %2$s).', 'wp-git-sync' ),
+					/* translators: 1: File path, 2: Reported encoding. */
+					esc_html__( 'Unable to decode file from GitHub for "%1$s" (encoding: %2$s).', 'wp-git-sync' ),
 					esc_html( $path ),
-					esc_html( $blob_sha )
+					esc_html( $encoding )
 				)
 			);
-		}
-
-		$encoding = isset( $data['encoding'] ) ? (string) $data['encoding'] : 'unknown';
-		throw new RuntimeException(
-			sprintf(
-				__( 'Unable to decode file from GitHub for "%1$s" (encoding: %2$s).', 'wp-git-sync' ),
-				esc_html( $path ),
-				esc_html( $encoding )
-			)
-		);
 	}
 
 	/**
@@ -110,13 +112,13 @@ final class WPGS_GitHub_Provider {
 	 * @param string            $repo Repo in the form owner/repo.
 	 * @throws InvalidArgumentException If repo is invalid.
 	 */
-	public function __construct( WPGS_GitHub_Client $client, string $repo ) {
-		$this->client = $client;
-		$this->repo   = trim( $repo );
-		if ( '' === $this->repo || false === strpos( $this->repo, '/' ) ) {
-			throw new InvalidArgumentException( __( 'Repo must be in the form owner/repo.', 'wp-git-sync' ) );
+		public function __construct( WPGS_GitHub_Client $client, string $repo ) {
+			$this->client = $client;
+			$this->repo   = trim( $repo );
+			if ( '' === $this->repo || false === strpos( $this->repo, '/' ) ) {
+				throw new InvalidArgumentException( esc_html__( 'Repo must be in the form owner/repo.', 'wp-git-sync' ) );
+			}
 		}
-	}
 
 	/**
 	 * Ensure a branch exists.
@@ -127,11 +129,11 @@ final class WPGS_GitHub_Provider {
 	 * @param string $branch Branch name.
 	 * @return void
 	 */
-	public function ensure_branch( string $branch ): void {
-		$branch = trim( $branch );
-		if ( '' === $branch ) {
-			throw new InvalidArgumentException( __( 'Branch is required.', 'wp-git-sync' ) );
-		}
+		public function ensure_branch( string $branch ): void {
+			$branch = trim( $branch );
+			if ( '' === $branch ) {
+				throw new InvalidArgumentException( esc_html__( 'Branch is required.', 'wp-git-sync' ) );
+			}
 
 		try {
 			$this->get_ref_sha( $branch );
@@ -166,11 +168,11 @@ final class WPGS_GitHub_Provider {
 	 * @return string Commit SHA.
 	 */
 	public function get_ref_sha( string $branch ): string {
-		$data = $this->client->request( 'GET', $this->api( '/git/refs/heads/' . rawurlencode( $branch ) ) );
-		$sha  = isset( $data['object']['sha'] ) ? (string) $data['object']['sha'] : '';
-		if ( '' === $sha ) {
-			throw new RuntimeException( __( 'Unable to read branch head SHA.', 'wp-git-sync' ) );
-		}
+			$data = $this->client->request( 'GET', $this->api( '/git/refs/heads/' . rawurlencode( $branch ) ) );
+			$sha  = isset( $data['object']['sha'] ) ? (string) $data['object']['sha'] : '';
+			if ( '' === $sha ) {
+				throw new RuntimeException( esc_html__( 'Unable to read branch head SHA.', 'wp-git-sync' ) );
+			}
 		return $sha;
 	}
 
@@ -181,11 +183,11 @@ final class WPGS_GitHub_Provider {
 	 * @return string Tree SHA.
 	 */
 	public function get_commit_tree_sha( string $commit_sha ): string {
-		$data = $this->client->request( 'GET', $this->api( '/git/commits/' . rawurlencode( $commit_sha ) ) );
-		$sha  = isset( $data['tree']['sha'] ) ? (string) $data['tree']['sha'] : '';
-		if ( '' === $sha ) {
-			throw new RuntimeException( __( 'Unable to read commit tree SHA.', 'wp-git-sync' ) );
-		}
+			$data = $this->client->request( 'GET', $this->api( '/git/commits/' . rawurlencode( $commit_sha ) ) );
+			$sha  = isset( $data['tree']['sha'] ) ? (string) $data['tree']['sha'] : '';
+			if ( '' === $sha ) {
+				throw new RuntimeException( esc_html__( 'Unable to read commit tree SHA.', 'wp-git-sync' ) );
+			}
 		return $sha;
 	}
 
@@ -199,11 +201,11 @@ final class WPGS_GitHub_Provider {
 		$data = $this->client->request( 'POST', $this->api( '/git/blobs' ), [
 			'content'  => $content,
 			'encoding' => 'utf-8',
-		] );
-		$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
-		if ( '' === $sha ) {
-			throw new RuntimeException( __( 'Unable to create blob.', 'wp-git-sync' ) );
-		}
+			] );
+			$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
+			if ( '' === $sha ) {
+				throw new RuntimeException( esc_html__( 'Unable to create blob.', 'wp-git-sync' ) );
+			}
 		return $sha;
 	}
 
@@ -221,11 +223,11 @@ final class WPGS_GitHub_Provider {
 			$payload['base_tree'] = $base_tree_sha;
 		}
 
-		$data = $this->client->request( 'POST', $this->api( '/git/trees' ), $payload );
-		$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
-		if ( '' === $sha ) {
-			throw new RuntimeException( __( 'Unable to create tree.', 'wp-git-sync' ) );
-		}
+			$data = $this->client->request( 'POST', $this->api( '/git/trees' ), $payload );
+			$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
+			if ( '' === $sha ) {
+				throw new RuntimeException( esc_html__( 'Unable to create tree.', 'wp-git-sync' ) );
+			}
 		return $sha;
 	}
 
@@ -246,11 +248,11 @@ final class WPGS_GitHub_Provider {
 			$payload['parents'] = [ $parent_commit_sha ];
 		}
 
-		$data = $this->client->request( 'POST', $this->api( '/git/commits' ), $payload );
-		$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
-		if ( '' === $sha ) {
-			throw new RuntimeException( __( 'Unable to create commit.', 'wp-git-sync' ) );
-		}
+			$data = $this->client->request( 'POST', $this->api( '/git/commits' ), $payload );
+			$sha = isset( $data['sha'] ) ? (string) $data['sha'] : '';
+			if ( '' === $sha ) {
+				throw new RuntimeException( esc_html__( 'Unable to create commit.', 'wp-git-sync' ) );
+			}
 		return $sha;
 	}
 
@@ -289,11 +291,11 @@ final class WPGS_GitHub_Provider {
 	 * @param string $message Commit message.
 	 * @return void
 	 */
-	public function reset_branch_to_empty( string $branch, string $message ): void {
-		$branch = trim( $branch );
-		if ( '' === $branch ) {
-			throw new InvalidArgumentException( __( 'Branch is required.', 'wp-git-sync' ) );
-		}
+		public function reset_branch_to_empty( string $branch, string $message ): void {
+			$branch = trim( $branch );
+			if ( '' === $branch ) {
+				throw new InvalidArgumentException( esc_html__( 'Branch is required.', 'wp-git-sync' ) );
+			}
 
 		$this->ensure_branch( $branch );
 
@@ -412,29 +414,31 @@ final class WPGS_GitHub_Provider {
 
 			return [ 'commit_sha' => $new_commit ];
 		} catch ( Throwable $e ) {
-			if ( ! $this->is_empty_repo_error( $e ) ) {
-				throw new RuntimeException(
-					sprintf(
-						__( 'GitHub commit pipeline failed at step "%1$s": %2$s', 'wp-git-sync' ),
-						esc_html( $step ),
-						esc_html( $e->getMessage() )
-					)
-				);
+				if ( ! $this->is_empty_repo_error( $e ) ) {
+					throw new RuntimeException(
+						sprintf(
+							/* translators: 1: Commit pipeline step name, 2: Error message. */
+							esc_html__( 'GitHub commit pipeline failed at step "%1$s": %2$s', 'wp-git-sync' ),
+							esc_html( $step ),
+							esc_html( $e->getMessage() )
+						)
+					);
 			}
 
 			// Last-resort bootstrap for empty repos if any earlier step still returned 409.
 			try {
 				$step = 'bootstrap_empty_repo';
 				return $this->bootstrap_empty_repo( $branch, $message, $files );
-			} catch ( Throwable $bootstrap_error ) {
-				throw new RuntimeException(
-					sprintf(
-						__( 'GitHub commit pipeline failed at step "%1$s": %2$s', 'wp-git-sync' ),
-						esc_html( $step ),
-						esc_html( $bootstrap_error->getMessage() )
-					)
-				);
-			}
+				} catch ( Throwable $bootstrap_error ) {
+					throw new RuntimeException(
+						sprintf(
+							/* translators: 1: Commit pipeline step name, 2: Error message. */
+							esc_html__( 'GitHub commit pipeline failed at step "%1$s": %2$s', 'wp-git-sync' ),
+							esc_html( $step ),
+							esc_html( $bootstrap_error->getMessage() )
+						)
+					);
+				}
 		}
 	}
 
@@ -450,7 +454,7 @@ final class WPGS_GitHub_Provider {
 	 */
 	private function bootstrap_empty_repo( string $branch, string $message, array $files ): array {
 		if ( empty( $files ) ) {
-			throw new RuntimeException( __( 'Cannot initialize empty repository: no files to commit.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'Cannot initialize empty repository: no files to commit.', 'wp-git-sync' ) );
 		}
 
 		$first_path = (string) array_key_first( $files );
@@ -500,7 +504,7 @@ final class WPGS_GitHub_Provider {
 
 		$commit_sha = isset( $data['commit']['sha'] ) ? (string) $data['commit']['sha'] : '';
 		if ( '' === $commit_sha ) {
-			throw new RuntimeException( __( 'Unable to create initial commit in empty repository.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'Unable to create initial commit in empty repository.', 'wp-git-sync' ) );
 		}
 
 		// Ensure selected branch exists and points to the initial commit.

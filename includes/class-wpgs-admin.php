@@ -513,14 +513,14 @@ final class WPGS_Admin {
 		$owner = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo  = trim( (string) ( $settings['github_repo'] ?? '' ) );
 		if ( '' === $owner || '' === $repo ) {
-			throw new RuntimeException( __( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
 		}
 		// Validate token is available before queueing work.
 		WPGS_Auth::get_token( $settings );
 
 		$included_post_types = self::included_post_types();
 		if ( empty( $included_post_types ) ) {
-			throw new RuntimeException( __( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
 		}
 
 		$post_types = empty( $post_types ) ? $included_post_types : array_values( array_unique( array_map( 'sanitize_key', array_map( 'strval', $post_types ) ) ) );
@@ -532,7 +532,7 @@ final class WPGS_Admin {
 			)
 		);
 		if ( empty( $post_types ) ) {
-			throw new RuntimeException( __( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
 		}
 		$post_ids = self::collect_export_post_ids( $post_types, $only_errors );
 		$total_posts = count( $post_ids );
@@ -652,7 +652,7 @@ final class WPGS_Admin {
 		$key = self::export_batch_transient_key();
 		$batch = get_transient( $key );
 		if ( ! is_array( $batch ) ) {
-			throw new RuntimeException( __( 'No active export batch. Start a new export first.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'No active export batch. Start a new export first.', 'wp-git-sync' ) );
 		}
 
 		$batch['paused'] = false;
@@ -670,15 +670,16 @@ final class WPGS_Admin {
 		if ( ! empty( $queue ) ) {
 			$post_id = (int) array_shift( $queue );
 			$batch['queue'] = $queue;
-			try {
-				$exporter->export_post( $post_id );
-				$batch['succeeded'] = (int) ( $batch['succeeded'] ?? 0 ) + 1;
-				$last_step = [
-					'type'    => 'post',
-					'ok'      => true,
-					'message' => sprintf( __( 'Exported post #%d', 'wp-git-sync' ), $post_id ),
-					'post_id' => $post_id,
-				];
+				try {
+					$exporter->export_post( $post_id );
+					$batch['succeeded'] = (int) ( $batch['succeeded'] ?? 0 ) + 1;
+					$last_step = [
+						'type'    => 'post',
+						'ok'      => true,
+						/* translators: %d: Post ID. */
+						'message' => sprintf( __( 'Exported post #%d', 'wp-git-sync' ), $post_id ),
+						'post_id' => $post_id,
+					];
 				$count_step = true;
 				$count_post = true;
 			} catch ( Throwable $e ) {
@@ -703,12 +704,13 @@ final class WPGS_Admin {
 						'post_id' => $post_id,
 						'error'   => $error_message,
 					];
-					$last_step = [
-						'type'    => 'post',
-						'ok'      => false,
-						'message' => sprintf( __( 'Failed exporting post #%1$d: %2$s', 'wp-git-sync' ), $post_id, $error_message ),
-						'post_id' => $post_id,
-					];
+						$last_step = [
+							'type'    => 'post',
+							'ok'      => false,
+							/* translators: 1: Post ID, 2: Error message. */
+							'message' => sprintf( __( 'Failed exporting post #%1$d: %2$s', 'wp-git-sync' ), $post_id, $error_message ),
+							'post_id' => $post_id,
+						];
 					$count_step = true;
 					$count_post = true;
 				}
@@ -745,11 +747,12 @@ final class WPGS_Admin {
 						'post_id' => 0,
 						'error'   => $error_message,
 					];
-					$last_step = [
-						'type'    => 'finalize',
-						'ok'      => false,
-						'message' => sprintf( __( 'Finalize step failed: %s', 'wp-git-sync' ), $error_message ),
-					];
+						$last_step = [
+							'type'    => 'finalize',
+							'ok'      => false,
+							/* translators: %s: Error message. */
+							'message' => sprintf( __( 'Finalize step failed: %s', 'wp-git-sync' ), $error_message ),
+						];
 					$batch['finalized'] = true;
 					$count_step = true;
 				}
@@ -1060,6 +1063,7 @@ final class WPGS_Admin {
 			wp_send_json_success(
 				[
 					'post_id' => $post_id,
+					/* translators: %d: Post ID. */
 					'message' => sprintf( __( 'Exported post #%d', 'wp-git-sync' ), $post_id ),
 					'state'   => [
 						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
@@ -1074,6 +1078,7 @@ final class WPGS_Admin {
 			wp_send_json_error(
 				[
 					'post_id' => $post_id,
+					/* translators: 1: Post ID, 2: Error message. */
 					'message' => sprintf( __( 'Failed syncing post #%1$d: %2$s', 'wp-git-sync' ), $post_id, (string) $e->getMessage() ),
 					'state'   => [
 						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
@@ -1177,7 +1182,7 @@ final class WPGS_Admin {
 		$token    = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
-			throw new RuntimeException( __( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
+			throw new RuntimeException( esc_html__( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
 		}
 
 		return [
@@ -1207,7 +1212,8 @@ final class WPGS_Admin {
 			$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
 			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
 		} catch ( Throwable $e ) {
-			throw new RuntimeException( sprintf( __( 'Unable to fetch remote files for diff: %s', 'wp-git-sync' ), esc_html( $e->getMessage() ) ) );
+			/* translators: %s: Error message from GitHub fetch. */
+			throw new RuntimeException( sprintf( esc_html__( 'Unable to fetch remote files for diff: %s', 'wp-git-sync' ), esc_html( $e->getMessage() ) ) );
 		}
 
 		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
@@ -1282,7 +1288,8 @@ final class WPGS_Admin {
 	private static function decode_json_array_payload( string $json, string $label ): array {
 		$decoded = json_decode( $json, true );
 		if ( ! is_array( $decoded ) ) {
-			throw new RuntimeException( sprintf( __( 'Unable to decode remote %s JSON.', 'wp-git-sync' ), esc_html( $label ) ) );
+			/* translators: %s: Payload label (for example "post data" or "meta data"). */
+			throw new RuntimeException( sprintf( esc_html__( 'Unable to decode remote %s JSON.', 'wp-git-sync' ), esc_html( $label ) ) );
 		}
 		return $decoded;
 	}
@@ -1484,6 +1491,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
+			/* translators: %s: Error message while importing content. */
 			wp_die( esc_html( sprintf( __( 'Unable to import remote content: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
@@ -1524,6 +1532,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
+			/* translators: %s: Error message while importing post data. */
 			wp_die( esc_html( sprintf( __( 'Unable to import remote post data: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
@@ -1564,6 +1573,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
+			/* translators: %s: Error message while importing post meta data. */
 			wp_die( esc_html( sprintf( __( 'Unable to import remote meta data: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
@@ -1735,6 +1745,7 @@ final class WPGS_Admin {
 
 			if ( $code < 200 || $code >= 300 ) {
 				$message = isset( $data['message'] ) ? (string) $data['message'] : __( 'GitHub API error.', 'wp-git-sync' );
+				/* translators: 1: HTTP status code, 2: Error message returned from GitHub API. */
 				return new WP_Error( 'wpgs_repo_fetch_failed', sprintf( __( 'GitHub API request failed (%1$d): %2$s', 'wp-git-sync' ), $code, $message ) );
 			}
 
