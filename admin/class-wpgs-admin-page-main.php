@@ -24,6 +24,9 @@ final class WPGS_Admin_Page_Main {
 		$repo_full            = (string) ( $view['repo_full'] ?? '' );
 		$branch               = (string) ( $view['branch'] ?? 'main' );
 		$repo_url             = (string) ( $view['repo_url'] ?? '' );
+		$rate_limit           = isset( $view['rate_limit'] ) && is_array( $view['rate_limit'] ) ? $view['rate_limit'] : [];
+		$rate_limit_summary   = self::rate_limit_summary( $rate_limit );
+		$repo_dot_class       = self::repo_status_dot_class( $rate_limit );
 		$included_post_types  = isset( $view['included_post_types'] ) && is_array( $view['included_post_types'] ) ? $view['included_post_types'] : [];
 		$post_type_tabs       = isset( $view['post_type_tabs'] ) && is_array( $view['post_type_tabs'] ) ? $view['post_type_tabs'] : [];
 		?>
@@ -46,11 +49,12 @@ final class WPGS_Admin_Page_Main {
 				<div class="wpgs-overview-card">
 					<h2>Repository</h2>
 					<p class="wpgs-repo-status">
-						<span class="wpgs-status-dot is-green" aria-hidden="true"></span>
+						<span id="wpgs-repo-status-dot" class="wpgs-status-dot <?php echo esc_attr( $repo_dot_class ); ?>" aria-hidden="true"></span>
 						<strong><?php echo esc_html( $repo_full ); ?></strong>
 						<span>on</span>
 						<code><?php echo esc_html( $branch ); ?></code>
 					</p>
+					<p id="wpgs-rate-limit-summary" class="description wpgs-rate-limit-summary"><?php echo esc_html( $rate_limit_summary ); ?></p>
 
 					<div class="wpgs-action-row">
 						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer">Open Repo</a></p>
@@ -190,5 +194,53 @@ final class WPGS_Admin_Page_Main {
 			<?php endif; ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Resolve repository status dot class from rate-limit usage.
+	 *
+	 * @param array<string,mixed> $rate_limit Rate-limit payload.
+	 * @return string
+	 */
+	private static function repo_status_dot_class( array $rate_limit ): string {
+		$limit = max( 0, (int) ( $rate_limit['limit'] ?? 0 ) );
+		$used = max( 0, (int) ( $rate_limit['used'] ?? 0 ) );
+		$remaining = max( 0, (int) ( $rate_limit['remaining'] ?? 0 ) );
+		if ( $limit > 0 && ( $remaining <= 0 || $used >= $limit ) ) {
+			return 'is-red';
+		}
+		if ( $limit > 0 && $used > ( $limit / 2 ) ) {
+			return 'is-orange';
+		}
+		return 'is-green';
+	}
+
+	/**
+	 * Build a human-readable rate-limit summary line for the repository card.
+	 *
+	 * @param array<string,mixed> $rate_limit Rate-limit payload.
+	 * @return string
+	 */
+	private static function rate_limit_summary( array $rate_limit ): string {
+		$limit = max( 0, (int) ( $rate_limit['limit'] ?? 0 ) );
+		$used = max( 0, (int) ( $rate_limit['used'] ?? 0 ) );
+		$remaining = max( 0, (int) ( $rate_limit['remaining'] ?? 0 ) );
+		$reset = max( 0, (int) ( $rate_limit['reset'] ?? 0 ) );
+		$resource = trim( (string) ( $rate_limit['resource'] ?? '' ) );
+
+		if ( $limit < 1 ) {
+			return 'GitHub rate limit: no data yet. Start an export to fetch current usage.';
+		}
+
+		$parts = [
+			sprintf( 'GitHub rate limit: used %d / %d, remaining %d', $used, $limit, $remaining ),
+		];
+		if ( $reset > 0 ) {
+			$parts[] = 'resets at ' . gmdate( 'Y-m-d H:i:s', $reset ) . ' UTC';
+		}
+		if ( '' !== $resource ) {
+			$parts[] = 'resource: ' . $resource;
+		}
+		return implode( ' | ', $parts );
 	}
 }

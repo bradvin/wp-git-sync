@@ -31,6 +31,18 @@
 	background: #46b450;
 }
 
+.wpgs-status-dot.is-orange {
+	background: #dba617;
+}
+
+.wpgs-status-dot.is-red {
+	background: #d63638;
+}
+
+.wpgs-rate-limit-summary {
+	margin: 0 0 12px;
+}
+
 .wpgs-action-row {
 	display: flex;
 	gap: 8px;

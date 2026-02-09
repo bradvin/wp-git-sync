@@ -14,6 +14,8 @@
 	var progressWrap = document.getElementById('wpgs-export-progress');
 	var progressFill = document.getElementById('wpgs-export-progress-fill');
 	var progressText = document.getElementById('wpgs-export-progress-text');
+	var repoStatusDot = document.getElementById('wpgs-repo-status-dot');
+	var rateLimitSummary = document.getElementById('wpgs-rate-limit-summary');
 	var controlsWrap = document.getElementById('wpgs-export-controls');
 	var resumeBtn = document.getElementById('wpgs-export-resume-btn');
 	var pauseBtn = document.getElementById('wpgs-export-pause-btn');
@@ -97,6 +99,66 @@
 		el.style.display = visible ? '' : 'none';
 	}
 
+	function parseRateLimit(value) {
+		if (!value || typeof value !== 'object') {
+			return null;
+		}
+		var limit = Math.max(0, parseInt(value.limit || 0, 10) || 0);
+		var used = Math.max(0, parseInt(value.used || 0, 10) || 0);
+		var remaining = Math.max(0, parseInt(value.remaining || 0, 10) || 0);
+		var reset = Math.max(0, parseInt(value.reset || 0, 10) || 0);
+		var resource = value.resource ? String(value.resource) : '';
+		if (limit < 1 && used < 1 && remaining < 1 && reset < 1 && !resource) {
+			return null;
+		}
+		return {
+			limit: limit,
+			used: used,
+			remaining: remaining,
+			reset: reset,
+			resource: resource
+		};
+	}
+
+	function rateLimitSeverity(rate) {
+		if (!rate || rate.limit < 1) {
+			return 'is-green';
+		}
+		if (rate.remaining <= 0 || rate.used >= rate.limit) {
+			return 'is-red';
+		}
+		if (rate.used > (rate.limit / 2)) {
+			return 'is-orange';
+		}
+		return 'is-green';
+	}
+
+	function formatRateLimitSummary(rate) {
+		if (!rate || rate.limit < 1) {
+			return 'GitHub rate limit: no data yet. Start an export to fetch current usage.';
+		}
+		var parts = ['GitHub rate limit: used ' + rate.used + ' / ' + rate.limit + ', remaining ' + rate.remaining];
+		if (rate.reset > 0) {
+			var resetDate = new Date(rate.reset * 1000);
+			parts.push('resets at ' + resetDate.toUTCString());
+		}
+		if (rate.resource) {
+			parts.push('resource: ' + rate.resource);
+		}
+		return parts.join(' | ');
+	}
+
+	function renderRateLimit(rateLimit) {
+		var parsed = parseRateLimit(rateLimit);
+		if (repoStatusDot) {
+			repoStatusDot.classList.remove('is-green', 'is-orange', 'is-red');
+			repoStatusDot.classList.add(rateLimitSeverity(parsed));
+		}
+		if (rateLimitSummary) {
+			rateLimitSummary.textContent = formatRateLimitSummary(parsed);
+		}
+	}
+
 	function updateErrorSummary(panel) {
 		if (!panel) {
 			return;
@@ -173,6 +235,9 @@
 	function renderProgress(data) {
 		if (data.scope_label) {
 			currentScopeLabel = data.scope_label;
+		}
+		if (data && Object.prototype.hasOwnProperty.call(data, 'rate_limit')) {
+			renderRateLimit(data.rate_limit);
 		}
 		latestProgressData = data;
 		var pct = typeof data.percent === 'number' ? data.percent : 0;
@@ -319,6 +384,9 @@
 					throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
 				}
 				var data = res.data || {};
+				if (Object.prototype.hasOwnProperty.call(data, 'rate_limit')) {
+					renderRateLimit(data.rate_limit);
+				}
 				beginPollingWithCurrentState(data);
 			})
 			.catch(function (err) {
@@ -502,6 +570,9 @@
 				return;
 			}
 			var data = res.data || {};
+			if (Object.prototype.hasOwnProperty.call(data, 'rate_limit')) {
+				renderRateLimit(data.rate_limit);
+			}
 			if (!data.active) {
 				return;
 			}
@@ -522,6 +593,8 @@
 		.catch(function () {
 			// Keep manual start action available.
 		});
+
+	renderRateLimit(config.initialRateLimit || null);
 
 	for (var p = 0; p < typePanels.length; p++) {
 		updatePanelErrorState(typePanels[p]);

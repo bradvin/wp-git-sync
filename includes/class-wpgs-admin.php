@@ -93,8 +93,9 @@ final class WPGS_Admin {
 				'wpgs-admin-overview',
 				'wpgsOverviewConfig',
 				[
-					'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-					'nonce'   => wp_create_nonce( 'wpgs_export_batch' ),
+					'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
+					'nonce'            => wp_create_nonce( 'wpgs_export_batch' ),
+					'initialRateLimit' => self::current_rate_limit_state(),
 				]
 			);
 			return;
@@ -229,6 +230,77 @@ final class WPGS_Admin {
 	 */
 	private static function export_batch_transient_key(): string {
 		return 'wpgs_export_batch_' . (int) get_current_user_id();
+	}
+
+	/**
+	 * Build a user-scoped transient key for GitHub rate-limit state.
+	 *
+	 * @return string
+	 */
+	private static function rate_limit_transient_key(): string {
+		return 'wpgs_rate_limit_' . (int) get_current_user_id();
+	}
+
+	/**
+	 * Normalize an internal rate-limit payload.
+	 *
+	 * @param array<string,mixed> $raw Raw payload.
+	 * @return array{limit:int,remaining:int,used:int,reset:int,resource:string,collected_at:int}|array{}
+	 */
+	private static function normalize_rate_limit_state( array $raw ): array {
+		$limit     = isset( $raw['limit'] ) ? max( 0, (int) $raw['limit'] ) : 0;
+		$remaining = isset( $raw['remaining'] ) ? max( 0, (int) $raw['remaining'] ) : 0;
+		$used      = isset( $raw['used'] ) ? max( 0, (int) $raw['used'] ) : 0;
+		$reset     = isset( $raw['reset'] ) ? max( 0, (int) $raw['reset'] ) : 0;
+		$resource  = isset( $raw['resource'] ) ? trim( (string) $raw['resource'] ) : '';
+		$collected = isset( $raw['collected_at'] ) ? max( 0, (int) $raw['collected_at'] ) : time();
+
+		if ( $limit <= 0 && $remaining <= 0 && $used <= 0 && $reset <= 0 && '' === $resource ) {
+			return [];
+		}
+
+		return [
+			'limit'        => $limit,
+			'remaining'    => $remaining,
+			'used'         => $used,
+			'reset'        => $reset,
+			'resource'     => $resource,
+			'collected_at' => $collected,
+		];
+	}
+
+	/**
+	 * Persist user-scoped GitHub rate-limit state for UI display.
+	 *
+	 * @param array<string,mixed> $raw Raw rate-limit payload.
+	 * @return void
+	 */
+	private static function store_rate_limit_state( array $raw ): void {
+		$normalized = self::normalize_rate_limit_state( $raw );
+		if ( empty( $normalized ) ) {
+			return;
+		}
+
+		$ttl = 2 * HOUR_IN_SECONDS;
+		if ( $normalized['reset'] > time() ) {
+			$ttl = max( 60, (int) ( $normalized['reset'] - time() + ( 5 * MINUTE_IN_SECONDS ) ) );
+		}
+
+		set_transient( self::rate_limit_transient_key(), $normalized, $ttl );
+	}
+
+	/**
+	 * Read current user-scoped GitHub rate-limit state.
+	 *
+	 * @return array{limit:int,remaining:int,used:int,reset:int,resource:string,collected_at:int}|array{}
+	 */
+	private static function current_rate_limit_state(): array {
+		$stored = get_transient( self::rate_limit_transient_key() );
+		if ( ! is_array( $stored ) ) {
+			return [];
+		}
+
+		return self::normalize_rate_limit_state( $stored );
 	}
 
 	/**
@@ -442,6 +514,7 @@ final class WPGS_Admin {
 			'scope_label'     => $scope_label,
 			'only_errors'     => $only_errors,
 			'queue'           => $post_ids,
+			'rate_limit'      => self::current_rate_limit_state(),
 			'paused'          => false,
 			'total_posts'     => $total_posts,
 			'processed_posts' => 0,
@@ -512,6 +585,14 @@ final class WPGS_Admin {
 			$percent = 100;
 		}
 
+		$rate_limit = [];
+		if ( isset( $batch['rate_limit'] ) && is_array( $batch['rate_limit'] ) ) {
+			$rate_limit = self::normalize_rate_limit_state( $batch['rate_limit'] );
+		}
+		if ( empty( $rate_limit ) ) {
+			$rate_limit = self::current_rate_limit_state();
+		}
+
 		return [
 			'scope_label' => (string) ( $batch['scope_label'] ?? 'All post types' ),
 			'done'      => $done,
@@ -522,6 +603,7 @@ final class WPGS_Admin {
 			'succeeded' => (int) ( $batch['succeeded'] ?? 0 ),
 			'failed'    => count( $failed ),
 			'percent'   => $percent,
+			'rate_limit'=> $rate_limit,
 			'last_step' => $last_step,
 			'failures'  => $done ? array_values( $failed ) : [],
 		];
@@ -647,6 +729,14 @@ final class WPGS_Admin {
 		if ( $count_post ) {
 			$batch['processed_posts'] = (int) ( $batch['processed_posts'] ?? 0 ) + 1;
 		}
+		$latest_rate_limit = WPGS_GitHub_Client::get_last_rate_limit();
+		if ( ! empty( $latest_rate_limit ) ) {
+			$normalized_rate_limit = self::normalize_rate_limit_state( $latest_rate_limit );
+			if ( ! empty( $normalized_rate_limit ) ) {
+				$batch['rate_limit'] = $normalized_rate_limit;
+				self::store_rate_limit_state( $normalized_rate_limit );
+			}
+		}
 		$batch['updated_at']      = gmdate( 'c' );
 
 		$done = ( empty( $batch['queue'] ) && ! empty( $batch['finalized'] ) );
@@ -696,6 +786,7 @@ final class WPGS_Admin {
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
 		$included_post_types = self::included_post_types();
 		$post_type_tabs = $repo_ready ? self::post_type_tab_data( $included_post_types ) : [];
+		$rate_limit = self::current_rate_limit_state();
 
 		WPGS_Admin_Page_Main::render(
 			[
@@ -706,6 +797,7 @@ final class WPGS_Admin {
 				'repo_full'           => $repo_full,
 				'branch'              => $branch,
 				'repo_url'            => $repo_url,
+				'rate_limit'          => $rate_limit,
 				'included_post_types' => $included_post_types,
 				'post_type_tabs'      => $post_type_tabs,
 			]
@@ -839,8 +931,9 @@ final class WPGS_Admin {
 		if ( ! is_array( $batch ) ) {
 			wp_send_json_success(
 				[
-					'active' => false,
-					'done'   => false,
+					'active'     => false,
+					'done'       => false,
+					'rate_limit' => self::current_rate_limit_state(),
 				]
 			);
 		}
@@ -895,6 +988,7 @@ final class WPGS_Admin {
 			[
 				'active'    => false,
 				'done'      => false,
+				'rate_limit'=> self::current_rate_limit_state(),
 				'last_step' => [
 					'type'    => 'stop',
 					'ok'      => true,

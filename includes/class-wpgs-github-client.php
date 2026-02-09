@@ -25,6 +25,13 @@ final class WPGS_GitHub_Client {
 	private string $token;
 
 	/**
+	 * Most recently observed GitHub primary rate-limit state.
+	 *
+	 * @var array{limit:int,remaining:int,used:int,reset:int,resource:string,collected_at:int}|array{}
+	 */
+	private static array $last_rate_limit = [];
+
+	/**
 	 * @param string $token OAuth/PAT token.
 	 * @throws InvalidArgumentException If token is empty.
 	 */
@@ -74,6 +81,7 @@ final class WPGS_GitHub_Client {
 				)
 			);
 		}
+		self::capture_rate_limit_headers( $res );
 
 		$code = (int) wp_remote_retrieve_response_code( $res );
 		$raw  = (string) wp_remote_retrieve_body( $res );
@@ -129,6 +137,48 @@ final class WPGS_GitHub_Client {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Get the last captured GitHub primary rate-limit values.
+	 *
+	 * @return array{limit:int,remaining:int,used:int,reset:int,resource:string,collected_at:int}|array{}
+	 */
+	public static function get_last_rate_limit(): array {
+		return self::$last_rate_limit;
+	}
+
+	/**
+	 * Extract and store rate-limit headers from a GitHub API response.
+	 *
+	 * @param array<string,mixed> $response WP HTTP response array.
+	 * @return void
+	 */
+	private static function capture_rate_limit_headers( array $response ): void {
+		$limit_raw     = wp_remote_retrieve_header( $response, 'x-ratelimit-limit' );
+		$remaining_raw = wp_remote_retrieve_header( $response, 'x-ratelimit-remaining' );
+		$used_raw      = wp_remote_retrieve_header( $response, 'x-ratelimit-used' );
+		$reset_raw     = wp_remote_retrieve_header( $response, 'x-ratelimit-reset' );
+		$resource_raw  = wp_remote_retrieve_header( $response, 'x-ratelimit-resource' );
+
+		$has_any_header =
+			( is_string( $limit_raw ) && '' !== trim( $limit_raw ) ) ||
+			( is_string( $remaining_raw ) && '' !== trim( $remaining_raw ) ) ||
+			( is_string( $used_raw ) && '' !== trim( $used_raw ) ) ||
+			( is_string( $reset_raw ) && '' !== trim( $reset_raw ) ) ||
+			( is_string( $resource_raw ) && '' !== trim( $resource_raw ) );
+		if ( ! $has_any_header ) {
+			return;
+		}
+
+		self::$last_rate_limit = [
+			'limit'        => max( 0, (int) $limit_raw ),
+			'remaining'    => max( 0, (int) $remaining_raw ),
+			'used'         => max( 0, (int) $used_raw ),
+			'reset'        => max( 0, (int) $reset_raw ),
+			'resource'     => is_string( $resource_raw ) ? trim( $resource_raw ) : '',
+			'collected_at' => time(),
+		];
 	}
 
 	/**
