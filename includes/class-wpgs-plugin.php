@@ -61,17 +61,7 @@ final class WPGS_Plugin {
 	 * - Hooks settings + admin UI into WordPress.
 	 */
 	private function __construct() {
-		add_action( 'init', [ __CLASS__, 'load_textdomain' ] );
 		WPGS_Settings::register();
 		WPGS_Admin::register();
-	}
-
-	/**
-	 * Load plugin translations.
-	 *
-	 * @return void
-	 */
-	public static function load_textdomain(): void {
-		load_plugin_textdomain( 'wp-git-sync', false, dirname( plugin_basename( WPGS_PLUGIN_FILE ) ) . '/languages' );
 	}
 }

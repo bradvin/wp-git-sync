@@ -925,7 +925,7 @@ final class WPGS_Admin {
 
 		try {
 			$post_type = isset( $_POST['post_type'] ) ? sanitize_key( (string) wp_unslash( $_POST['post_type'] ) ) : '';
-			$only_errors = isset( $_POST['only_errors'] ) && '1' === (string) wp_unslash( $_POST['only_errors'] );
+			$only_errors = isset( $_POST['only_errors'] ) && 1 === absint( wp_unslash( (string) $_POST['only_errors'] ) );
 			$post_types = [];
 			if ( '' !== $post_type ) {
 				$allowed = self::included_post_types();

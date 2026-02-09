@@ -1,0 +1,7 @@
+plugin check:
+  ignore-codes:
+    - trademarked_term
+    - github_directory
+    - hidden_files
+    - compressed_files
+    - application_detected

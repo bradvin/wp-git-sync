@@ -53,6 +53,8 @@ rsync -a "$ROOT_DIR"/ "$STAGING_DIR"/ \
   --exclude '.idea/' \
   --exclude '.vscode/' \
   --exclude 'node_modules/' \
+  --exclude 'packages.json' \
+  --exclude 'wp-cli.yml' \
   --exclude 'tests/'
 
 if [ -f "$STAGING_DIR/composer.json" ]; then
@@ -73,7 +75,9 @@ rm -f \
   "$STAGING_DIR/.gitignore" \
   "$STAGING_DIR/composer.json" \
   "$STAGING_DIR/composer.lock" \
-  "$STAGING_DIR/phpstan.neon.dist"
+  "$STAGING_DIR/phpstan.neon.dist" \
+  "$STAGING_DIR/packages.json" \
+  "$STAGING_DIR/wp-cli.yml"
 
 (
   cd "$BUILD_ROOT"
