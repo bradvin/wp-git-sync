@@ -581,7 +581,7 @@ final class WPGS_Admin {
 			return false;
 		}
 
-		foreach ( [ 'api rate limit exceeded', 'rate limit exceeded', 'secondary rate limit' ] as $fragment ) {
+		foreach ( [ 'api rate limit exceeded', 'rate limit exceeded', 'secondary rate limit', 'temporarily being throttled', 'being throttled', 'request failed (429)', 'too many requests' ] as $fragment ) {
 			if ( false !== strpos( $needle, $fragment ) ) {
 				return true;
 			}

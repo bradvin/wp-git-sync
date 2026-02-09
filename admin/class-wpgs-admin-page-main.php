@@ -88,6 +88,7 @@ final class WPGS_Admin_Page_Main {
 					<p class="wpgs-action-row">
 						<button type="button" class="button button-primary" id="wpgs-export-all-btn"><?php esc_html_e( 'Export All Posts', 'wp-git-sync' ); ?></button>
 						<span id="wpgs-export-controls" class="wpgs-export-controls" hidden>
+							<button type="button" class="button button-secondary" id="wpgs-export-pause-btn" hidden><?php esc_html_e( 'Pause Export', 'wp-git-sync' ); ?></button>
 							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden><?php esc_html_e( 'Resume Export', 'wp-git-sync' ); ?></button>
 							<button type="button" class="button button-secondary" id="wpgs-export-stop-btn" hidden><?php esc_html_e( 'Stop Export', 'wp-git-sync' ); ?></button>
 						</span>

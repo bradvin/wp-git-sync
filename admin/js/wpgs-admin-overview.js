@@ -18,6 +18,7 @@
 	var repoStatusDot = document.getElementById('wpgs-repo-status-dot');
 	var rateLimitSummary = document.getElementById('wpgs-rate-limit-summary');
 	var controlsWrap = document.getElementById('wpgs-export-controls');
+	var pauseBtn = document.getElementById('wpgs-export-pause-btn');
 	var resumeBtn = document.getElementById('wpgs-export-resume-btn');
 	var stopBtn = document.getElementById('wpgs-export-stop-btn');
 	var setupRepoToggleBtn = document.getElementById('wpgs-setup-repo-toggle-btn');
@@ -33,6 +34,7 @@
 	var isRunning = false;
 	var isPaused = false;
 	var isStopping = false;
+	var hasActiveBatch = false;
 	var stopRequested = false;
 	var currentScopeLabel = t('allPostTypes');
 	var pendingResumeData = null;
@@ -230,12 +232,13 @@
 		if (!controlsWrap) {
 			return;
 		}
-		var hasPendingResume = !isRunning && !!pendingResumeData;
-		var showControls = isRunning || isPaused || hasPendingResume;
+		var hasPendingResume = hasActiveBatch && !isRunning && !!pendingResumeData;
+		var showControls = hasActiveBatch;
 		controlsWrap.hidden = !showControls;
 		controlsWrap.style.display = showControls ? 'inline-flex' : 'none';
-		setControlVisible(resumeBtn, isPaused || hasPendingResume);
-		setControlVisible(stopBtn, isRunning || isPaused || hasPendingResume);
+		setControlVisible(pauseBtn, hasActiveBatch && isRunning && !isPaused);
+		setControlVisible(resumeBtn, hasActiveBatch && (isPaused || hasPendingResume));
+		setControlVisible(stopBtn, hasActiveBatch);
 	}
 
 	function setSetupRepoConfirmVisible(visible) {
@@ -304,6 +307,7 @@
 	function finishRun(data) {
 		isRunning = false;
 		isPaused = false;
+		hasActiveBatch = false;
 		pendingResumeData = null;
 		latestProgressData = data || latestProgressData;
 		setExportButtonsEnabled(true);
@@ -314,6 +318,7 @@
 
 	function beginPollingWithCurrentState(data) {
 		stopRequested = false;
+		hasActiveBatch = true;
 		isRunning = true;
 		isPaused = false;
 		pendingResumeData = null;
@@ -326,6 +331,7 @@
 	}
 
 	function pauseByServer(data) {
+		hasActiveBatch = true;
 		isRunning = false;
 		isPaused = true;
 		pendingResumeData = data || latestProgressData || {};
@@ -370,12 +376,28 @@
 				}
 				isRunning = false;
 				isPaused = false;
+				hasActiveBatch = false;
 				pendingResumeData = null;
 				setExportButtonsEnabled(true);
 					btn.textContent = t('exportAllButton');
 				refreshControlButtons();
 					progressText.textContent = t('batchFailedPrefix') + (err && err.message ? err.message : t('unknownError'));
 			});
+	}
+
+	function pauseBatch() {
+		if (!isRunning || isPaused || isStopping) {
+			return;
+		}
+		isRunning = false;
+		isPaused = true;
+		hasActiveBatch = true;
+		pendingResumeData = latestProgressData || pendingResumeData || {};
+		btn.textContent = t('exportPausedButton');
+		refreshControlButtons();
+		if (progressText) {
+			progressText.textContent += ' ' + t('clickResumeHint');
+		}
 	}
 
 	function startBatch(postType, scopeLabel, onlyErrors) {
@@ -391,6 +413,7 @@
 		stopRequested = false;
 		isRunning = true;
 		isPaused = false;
+		hasActiveBatch = false;
 		setExportButtonsEnabled(false);
 		btn.textContent = t('exportingButton');
 		refreshControlButtons();
@@ -409,6 +432,7 @@
 			.catch(function (err) {
 				isRunning = false;
 				isPaused = false;
+				hasActiveBatch = false;
 				setExportButtonsEnabled(true);
 					btn.textContent = t('exportAllButton');
 				refreshControlButtons();
@@ -424,6 +448,7 @@
 		stopRequested = true;
 		isRunning = false;
 		isPaused = false;
+		hasActiveBatch = true;
 		refreshControlButtons();
 		request('wpgs_export_batch_stop')
 			.then(function (res) {
@@ -431,6 +456,7 @@
 					throw new Error((res.data && res.data.message) ? res.data.message : t('unableStopExport'));
 				}
 				var data = res.data || {};
+				hasActiveBatch = false;
 				pendingResumeData = null;
 				latestProgressData = null;
 					btn.textContent = t('exportAllButton');
@@ -443,6 +469,7 @@
 						: t('exportStopped');
 			})
 			.catch(function (err) {
+				hasActiveBatch = true;
 				setExportButtonsEnabled(false);
 					progressText.textContent = t('unableToStopBatchPrefix') + (err && err.message ? err.message : t('unknownError'));
 			})
@@ -554,6 +581,9 @@
 		});
 	}
 
+	if (pauseBtn) {
+		pauseBtn.addEventListener('click', pauseBatch);
+	}
 	if (resumeBtn) {
 		resumeBtn.addEventListener('click', function () {
 			if (!pendingResumeData || isRunning) {
@@ -587,8 +617,14 @@
 				renderRateLimit(data.rate_limit);
 			}
 			if (!data.active) {
+				hasActiveBatch = false;
+				isRunning = false;
+				isPaused = false;
+				pendingResumeData = null;
+				refreshControlButtons();
 				return;
 			}
+			hasActiveBatch = true;
 			pendingResumeData = data;
 			progressWrap.hidden = false;
 			renderProgress(data);
