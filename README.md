@@ -11,14 +11,33 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Sync WordPress content and metadata to GitHub.
 
-## What it does
+## Why I built this
+
+This was my ideal workflow:
+
+1. I want to export my WordPress content to GitHub (using a plugin).
+2. My agent can see all the content, and make changes to the Github repo via a PR.
+3. I can review the PR, and merge it into the main branch.
+4. I can use the plugin to check for changes, and pull them into WP from Github.
+
+I suppose humans can also make content changes and submit PRs.
+
+## What this plugin does
 
 - Configures a GitHub repo (`owner` + `repo`) + branch (default: `main`)
 - Exports posts/pages to deterministic content/data/meta files
 - Maintains a mapping file at `wp-git-sync/mapping.json` in the repo
 - Generates/updates a deterministic repo-root `README.md` index in the repo
 - Writes changes via the GitHub **Git Data API** in a single commit per export
-- Adds a per-post metabox with sync status + “Sync this post now”
+- Adds a per-post metabox with sync status + “Sync this post now” + "Check for changes"
+- Allows you to check for changes, and pull them into WP from Github.
+
+## Screenshots
+
+![Admin page](screenshots/admin.png)
+![Export](screenshots/admin-export.png)
+![Diff Content](screenshots/diff-content.png)
+![Diff Post](screenshots/diff-post.png)
 
 ## Deterministic file layout
 
