@@ -56,6 +56,7 @@ rsync -a "$ROOT_DIR"/ "$STAGING_DIR"/ \
   --exclude 'packages.json' \
   --exclude 'wp-cli.yml' \
   --exclude 'screenshots/' \
+  --exclude 'scripts/' \
   --exclude 'tests/'
 
 if [ -f "$STAGING_DIR/composer.json" ]; then
@@ -81,6 +82,7 @@ rm -f \
   "$STAGING_DIR/wp-cli.yml"
 
 rm -rf "$STAGING_DIR/screenshots"
+rm -rf "$STAGING_DIR/scripts"
 
 (
   cd "$BUILD_ROOT"
