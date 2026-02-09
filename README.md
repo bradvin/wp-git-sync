@@ -32,6 +32,12 @@ I suppose humans can also make content changes and submit PRs.
 - Adds a per-post metabox with sync status + “Sync this post now” + "Check for changes"
 - Allows you to check for changes, and pull them into WP from Github.
 
+## Test Repo
+
+To see what the repo looks like after an export, check out this test repo:
+
+https://github.com/bradvin/wp-git-sync-test
+
 ## Screenshots
 
 ![Admin page](screenshots/admin.png)
