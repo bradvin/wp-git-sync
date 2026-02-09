@@ -1157,7 +1157,16 @@ final class WPGS_Admin {
 			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
-		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		$post_id = filter_input( INPUT_POST, 'post_id', FILTER_VALIDATE_INT );
+		$post_id = ( false === $post_id || null === $post_id ) ? 0 : (int) $post_id;
+		if ( $post_id <= 0 ) {
+			$post_id = self::get_query_int( 'post_id' );
+		}
+
+		if ( $post_id <= 0 || ! get_post( $post_id ) ) {
+			wp_die( esc_html__( 'Invalid post.', 'wp-git-sync' ) );
+		}
+
 		check_admin_referer( 'wpgs_export_post_' . $post_id );
 
 		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
@@ -1859,21 +1868,54 @@ final class WPGS_Admin {
 	public static function render_metabox( WP_Post $post ): void {
 		$state  = WPGS_Sync_Meta::get( (int) $post->ID );
 		$synced = WPGS_Sync_Meta::is_synced( (int) $post->ID );
-		$file_url = self::github_file_url_from_state( $state );
+		$content_file_url = self::github_file_url_from_state(
+			[
+				'repo'   => (string) ( $state['repo'] ?? '' ),
+				'branch' => (string) ( $state['branch'] ?? '' ),
+				'path'   => (string) ( $state['content_path'] ?? '' ),
+			]
+		);
+		$post_file_url = self::github_file_url_from_state(
+			[
+				'repo'   => (string) ( $state['repo'] ?? '' ),
+				'branch' => (string) ( $state['branch'] ?? '' ),
+				'path'   => (string) ( $state['post_path'] ?? '' ),
+			]
+		);
+		$meta_file_url = self::github_file_url_from_state(
+			[
+				'repo'   => (string) ( $state['repo'] ?? '' ),
+				'branch' => (string) ( $state['branch'] ?? '' ),
+				'path'   => (string) ( $state['meta_path'] ?? '' ),
+			]
+		);
 		$diff_url = self::tools_page_url(
 			[
 				'tab'     => 'diff',
 				'post_id' => (int) $post->ID,
 			]
 		);
+		$export_url = wp_nonce_url(
+			add_query_arg(
+				[
+					'action'  => 'wpgs_export_post',
+					'post_id' => (int) $post->ID,
+				],
+				admin_url( 'admin-post.php' )
+			),
+			'wpgs_export_post_' . (int) $post->ID
+		);
 
 		WPGS_Admin_Metabox::render(
 			$post,
 			[
-				'state'    => $state,
-				'synced'   => $synced,
-				'file_url' => $file_url,
-				'diff_url' => $diff_url,
+				'state'            => $state,
+				'synced'           => $synced,
+				'content_file_url' => $content_file_url,
+				'post_file_url'    => $post_file_url,
+				'meta_file_url'    => $meta_file_url,
+				'diff_url'         => $diff_url,
+				'export_url'       => $export_url,
 			]
 		);
 	}
