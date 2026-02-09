@@ -51,8 +51,12 @@ final class WPGS_Diff {
 			unset( $all_meta[ $k ] );
 		}
 
-		foreach ( self::meta_blacklist() as $k ) {
-			unset( $all_meta[ (string) $k ] );
+		$meta_blacklist = self::meta_blacklist();
+		foreach ( array_keys( $all_meta ) as $meta_key ) {
+			$meta_key = (string) $meta_key;
+			if ( self::meta_key_matches_blacklist( $meta_key, $meta_blacklist ) ) {
+				unset( $all_meta[ $meta_key ] );
+			}
 		}
 
 		/**
@@ -97,6 +101,43 @@ final class WPGS_Diff {
 		}
 
 		return array_values( array_unique( array_map( 'strval', $blacklist ) ) );
+	}
+
+	/**
+	 * Determine whether a meta key matches any blacklist rule.
+	 *
+	 * Supports exact-key rules and simple wildcard patterns using `*`.
+	 * Example: `_elementor*` matches `_elementor_data`.
+	 *
+	 * @param string   $meta_key  Meta key being evaluated.
+	 * @param string[] $blacklist Blacklist rules.
+	 * @return bool
+	 */
+	public static function meta_key_matches_blacklist( string $meta_key, array $blacklist ): bool {
+		$meta_key = (string) $meta_key;
+		if ( '' === $meta_key ) {
+			return false;
+		}
+
+		foreach ( $blacklist as $rule ) {
+			$rule = trim( (string) $rule );
+			if ( '' === $rule ) {
+				continue;
+			}
+			if ( false === strpos( $rule, '*' ) ) {
+				if ( $meta_key === $rule ) {
+					return true;
+				}
+				continue;
+			}
+
+			$regex = '/^' . str_replace( '\*', '.*', preg_quote( $rule, '/' ) ) . '$/';
+			if ( 1 === preg_match( $regex, $meta_key ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

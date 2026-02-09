@@ -1362,16 +1362,18 @@ final class WPGS_Admin {
 	 * @return void
 	 */
 	private static function apply_remote_post_meta( int $post_id, array $meta_payload ): void {
-		$protected = array_fill_keys(
-			array_merge( WPGS_Sync_Meta::internal_keys(), WPGS_Diff::meta_blacklist() ),
-			true
-		);
+		$internal_protected = array_fill_keys( WPGS_Sync_Meta::internal_keys(), true );
+		$meta_blacklist     = WPGS_Diff::meta_blacklist();
 
 		$existing = get_post_meta( $post_id );
 		if ( is_array( $existing ) ) {
 			foreach ( array_keys( $existing ) as $meta_key ) {
 				$meta_key = (string) $meta_key;
-				if ( '' === $meta_key || isset( $protected[ $meta_key ] ) ) {
+				if (
+					'' === $meta_key
+					|| isset( $internal_protected[ $meta_key ] )
+					|| WPGS_Diff::meta_key_matches_blacklist( $meta_key, $meta_blacklist )
+				) {
 					continue;
 				}
 				delete_post_meta( $post_id, $meta_key );
@@ -1380,7 +1382,11 @@ final class WPGS_Admin {
 
 		foreach ( $meta_payload as $meta_key => $values ) {
 			$meta_key = (string) $meta_key;
-			if ( '' === $meta_key || isset( $protected[ $meta_key ] ) ) {
+			if (
+				'' === $meta_key
+				|| isset( $internal_protected[ $meta_key ] )
+				|| WPGS_Diff::meta_key_matches_blacklist( $meta_key, $meta_blacklist )
+			) {
 				continue;
 			}
 

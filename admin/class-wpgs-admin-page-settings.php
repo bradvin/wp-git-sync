@@ -123,9 +123,9 @@ final class WPGS_Admin_Page_Settings {
 								name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[excluded_post_meta]"
 								placeholder="_edit_lock&#10;_edit_last"
 							><?php echo esc_textarea( (string) ( $settings['excluded_post_meta'] ?? '' ) ); ?></textarea>
-							<p class="description"><?php esc_html_e( 'Enter one post meta key per line. These keys will be excluded from meta export and diff checks.', 'wp-git-sync' ); ?></p>
-						</td>
-					</tr>
+							<p class="description"><?php esc_html_e( 'Enter one post meta key or wildcard pattern per line. Use * as a wildcard (for example: _elementor*). Matching keys are excluded from meta export and diff checks.', 'wp-git-sync' ); ?></p>
+							</td>
+						</tr>
 				</table>
 
 				<?php submit_button( __( 'Save settings', 'wp-git-sync' ) ); ?>

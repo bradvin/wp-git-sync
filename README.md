@@ -105,7 +105,9 @@ Required permissions for the selected repo:
 - Post data export is sourced from `wp_posts` fields (excluding `post_content`).
 - Meta export is sourced from `get_post_meta( $post_id )` only.
 - Meta blacklist defaults to excluding `_edit_lock`.
-  - Additional excluded keys can be provided via the `wpgs_export_postmeta_blacklist` filter.
+  - Additional excluded keys can be provided in **Settings → Excluded Post Meta Keys** (one rule per line).
+  - Wildcards are supported using `*` (for example `_elementor*` excludes `_elementor_data`, `_elementor_controls_usage`, etc.).
+  - Additional excluded keys can also be provided via the `wpgs_export_postmeta_blacklist` filter.
 
 ## Rate limit handling
 
