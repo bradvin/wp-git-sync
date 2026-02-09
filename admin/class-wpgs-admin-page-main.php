@@ -171,6 +171,7 @@ final class WPGS_Admin_Page_Main {
 											</thead>
 											<tbody>
 												<?php foreach ( $tab['rows'] as $row ) : ?>
+													<?php $is_out_of_sync = WPGS_Sync_Meta::OVERRIDE_OUT_OF_SYNC === strtolower( trim( (string) ( $row['override_state'] ?? '' ) ) ); ?>
 													<tr data-post-id="<?php echo (int) $row['id']; ?>" data-has-error="<?php echo ! empty( $row['last_error'] ) ? '1' : '0'; ?>">
 														<td>
 															<?php if ( ! empty( $row['edit_link'] ) ) : ?>
@@ -183,6 +184,8 @@ final class WPGS_Admin_Page_Main {
 														<td class="wpgs-row-state">
 															<?php if ( ! empty( $row['last_error'] ) ) : ?>
 																<span class="wpgs-pill wpgs-row-state-pill is-error"><?php esc_html_e( 'Error', 'wp-git-sync' ); ?></span>
+															<?php elseif ( $is_out_of_sync ) : ?>
+																<span class="wpgs-pill wpgs-row-state-pill is-out-of-sync"><?php esc_html_e( 'Out Of Sync', 'wp-git-sync' ); ?></span>
 															<?php else : ?>
 																<span class="wpgs-pill wpgs-row-state-pill is-synced"><?php esc_html_e( 'Synced', 'wp-git-sync' ); ?></span>
 															<?php endif; ?>

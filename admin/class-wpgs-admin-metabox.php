@@ -22,10 +22,15 @@ final class WPGS_Admin_Metabox {
 		$synced   = ! empty( $view['synced'] );
 		$file_url = (string) ( $view['file_url'] ?? '' );
 		$diff_url = (string) ( $view['diff_url'] ?? '' );
+		$is_out_of_sync = WPGS_Sync_Meta::OVERRIDE_OUT_OF_SYNC === strtolower( trim( (string) ( $state['override_state'] ?? '' ) ) );
 
-		$status = $synced ? __( 'Synced', 'wp-git-sync' ) : __( 'Not synced yet', 'wp-git-sync' );
+		if ( $is_out_of_sync ) {
+			$status = __( 'Out Of Sync', 'wp-git-sync' );
+		} else {
+			$status = $synced ? __( 'Synced', 'wp-git-sync' ) : __( 'Not synced yet', 'wp-git-sync' );
+		}
 		?>
-		<p><strong><?php esc_html_e( 'Status:', 'wp-git-sync' ); ?></strong> <?php echo esc_html( $status ); ?></p>
+		<p><strong><?php esc_html_e( 'Status:', 'wp-git-sync' ); ?></strong> <span<?php echo $is_out_of_sync ? ' style="color:#9a1f1f;font-weight:600;"' : ''; ?>><?php echo esc_html( $status ); ?></span></p>
 		<?php if ( $synced ) : ?>
 			<p><strong><?php esc_html_e( 'Repo:', 'wp-git-sync' ); ?></strong><br /><code><?php echo esc_html( (string) ( $state['repo'] ?? '' ) ); ?></code></p>
 			<p><strong><?php esc_html_e( 'Branch:', 'wp-git-sync' ); ?></strong><br /><code><?php echo esc_html( (string) ( $state['branch'] ?? '' ) ); ?></code></p>

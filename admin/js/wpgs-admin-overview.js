@@ -286,13 +286,17 @@
 		var syncedCell = row.querySelector('.wpgs-row-last-synced');
 		var errorCell = row.querySelector('.wpgs-row-last-error');
 		var hasError = state && state.last_error;
+		var overrideState = state && state.override_state ? String(state.override_state).trim().toLowerCase() : '';
+		var isOutOfSync = overrideState === 'out of sync';
 		var hasSyncedField = state && Object.prototype.hasOwnProperty.call(state, 'last_synced_at');
 		var hasErrorField = state && Object.prototype.hasOwnProperty.call(state, 'last_error');
 
 			if (stateCell) {
 				stateCell.innerHTML = hasError
 					? '<span class="wpgs-pill wpgs-row-state-pill is-error">' + t('rowStateError') + '</span>'
-					: '<span class="wpgs-pill wpgs-row-state-pill is-synced">' + t('rowStateSynced') + '</span>';
+					: (isOutOfSync
+						? '<span class="wpgs-pill wpgs-row-state-pill is-out-of-sync">' + t('rowStateOutOfSync') + '</span>'
+						: '<span class="wpgs-pill wpgs-row-state-pill is-synced">' + t('rowStateSynced') + '</span>');
 		}
 		if (syncedCell && hasSyncedField) {
 			syncedCell.textContent = state && state.last_synced_at ? String(state.last_synced_at) : '—';

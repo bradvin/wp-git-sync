@@ -63,5 +63,6 @@ final class WPGS_Plugin {
 	private function __construct() {
 		WPGS_Settings::register();
 		WPGS_Admin::register();
+		add_action( 'post_updated', [ 'WPGS_Sync_Meta', 'mark_out_of_sync_on_post_update' ], 10, 3 );
 	}
 }

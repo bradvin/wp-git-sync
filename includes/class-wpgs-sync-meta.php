@@ -34,6 +34,8 @@ final class WPGS_Sync_Meta {
 	public const KEY_POST_HASH      = '_wpgs_post_hash';
 	public const KEY_META_HASH      = '_wpgs_meta_hash';
 	public const KEY_LAST_ERROR     = '_wpgs_last_error';
+	public const KEY_OVERRIDE_STATE = '_wpgs_override_state';
+	public const OVERRIDE_OUT_OF_SYNC = 'out of sync';
 
 	/**
 	 * Keys that should never be exported as part of post meta.
@@ -53,6 +55,7 @@ final class WPGS_Sync_Meta {
 			self::KEY_POST_HASH,
 			self::KEY_META_HASH,
 			self::KEY_LAST_ERROR,
+			self::KEY_OVERRIDE_STATE,
 		];
 	}
 
@@ -72,7 +75,7 @@ final class WPGS_Sync_Meta {
 	 * Get sync state.
 	 *
 	 * @param int $post_id Post ID.
-	 * @return array{repo:string,branch:string,content_path:string,post_path:string,meta_path:string,last_commit:string,last_synced_at:string,content_hash:string,post_hash:string,meta_hash:string,last_error:string}
+	 * @return array{repo:string,branch:string,content_path:string,post_path:string,meta_path:string,last_commit:string,last_synced_at:string,content_hash:string,post_hash:string,meta_hash:string,last_error:string,override_state:string}
 	 */
 	public static function get( int $post_id ): array {
 		return [
@@ -87,6 +90,7 @@ final class WPGS_Sync_Meta {
 			'post_hash'      => (string) get_post_meta( $post_id, self::KEY_POST_HASH, true ),
 			'meta_hash'      => (string) get_post_meta( $post_id, self::KEY_META_HASH, true ),
 			'last_error'     => (string) get_post_meta( $post_id, self::KEY_LAST_ERROR, true ),
+			'override_state' => (string) get_post_meta( $post_id, self::KEY_OVERRIDE_STATE, true ),
 		];
 	}
 
@@ -112,6 +116,7 @@ final class WPGS_Sync_Meta {
 		update_post_meta( $post_id, self::KEY_POST_HASH, $data['post_hash'] );
 		update_post_meta( $post_id, self::KEY_META_HASH, $data['meta_hash'] );
 		delete_post_meta( $post_id, self::KEY_LAST_ERROR );
+		delete_post_meta( $post_id, self::KEY_OVERRIDE_STATE );
 	}
 
 	/**
@@ -126,5 +131,23 @@ final class WPGS_Sync_Meta {
 	 */
 	public static function set_error( int $post_id, string $message ): void {
 		update_post_meta( $post_id, self::KEY_LAST_ERROR, $message );
+	}
+
+	/**
+	 * Mark a synced post as out of sync after local post updates.
+	 *
+	 * @param int     $post_id Post ID.
+	 * @param WP_Post $post_after Updated post object.
+	 * @param WP_Post $post_before Previous post object.
+	 * @return void
+	 */
+	public static function mark_out_of_sync_on_post_update( int $post_id, WP_Post $post_after, WP_Post $post_before ): void {
+		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+			return;
+		}
+		if ( ! self::is_synced( $post_id ) ) {
+			return;
+		}
+		update_post_meta( $post_id, self::KEY_OVERRIDE_STATE, self::OVERRIDE_OUT_OF_SYNC );
 	}
 }

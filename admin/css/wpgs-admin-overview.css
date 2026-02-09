@@ -185,6 +185,11 @@
 	color: #9a1f1f;
 }
 
+.wpgs-pill.is-out-of-sync {
+	background: #fdecec;
+	color: #9a1f1f;
+}
+
 .wpgs-export-progress {
 	margin-top: 12px;
 }

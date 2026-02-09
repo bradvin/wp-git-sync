@@ -127,6 +127,7 @@ final class WPGS_Admin {
 						'allPostTypes'                 => __( 'All post types', 'wp-git-sync' ),
 						'errorsSuffix'                 => __( 'errors', 'wp-git-sync' ),
 						'rowStateError'                => __( 'Error', 'wp-git-sync' ),
+						'rowStateOutOfSync'            => __( 'Out Of Sync', 'wp-git-sync' ),
 						'rowStateSynced'               => __( 'Synced', 'wp-git-sync' ),
 					],
 				]
@@ -433,7 +434,7 @@ final class WPGS_Admin {
 	 * Build post-type tab data for the overview repository card.
 	 *
 	 * @param string[] $post_types Post types to include.
-	 * @return array<int,array{slug:string,label:string,count:int,error_count:int,rows:array<int,array{id:int,title:string,edit_link:string,synced:bool,last_synced_at:string,last_error:string}>}>
+	 * @return array<int,array{slug:string,label:string,count:int,error_count:int,rows:array<int,array{id:int,title:string,edit_link:string,synced:bool,last_synced_at:string,last_error:string,override_state:string}>}>
 	 */
 	private static function post_type_tab_data( array $post_types ): array {
 		$statuses = self::exportable_post_statuses();
@@ -470,7 +471,9 @@ final class WPGS_Admin {
 				$state = WPGS_Sync_Meta::get( $id );
 				$synced = WPGS_Sync_Meta::is_synced( $id );
 				$last_error = trim( (string) ( $state['last_error'] ?? '' ) );
-				if ( ! $synced && '' === $last_error ) {
+				$override_state = trim( (string) ( $state['override_state'] ?? '' ) );
+				$out_of_sync = WPGS_Sync_Meta::OVERRIDE_OUT_OF_SYNC === strtolower( $override_state );
+				if ( ! $synced && '' === $last_error && ! $out_of_sync ) {
 					continue;
 				}
 				if ( '' !== $last_error ) {
@@ -486,6 +489,7 @@ final class WPGS_Admin {
 					'synced'         => $synced,
 					'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
 					'last_error'     => $last_error,
+					'override_state' => $override_state,
 				];
 			}
 
