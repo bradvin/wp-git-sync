@@ -1,0 +1,38 @@
+.wpgs-token-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin: 8px 0 0;
+	font-weight: 600;
+}
+
+.wpgs-token-indicator .wpgs-status-dot {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.wpgs-token-indicator.is-config .wpgs-status-dot {
+	background: #2271b1;
+}
+
+.wpgs-token-indicator.is-options .wpgs-status-dot {
+	background: #46b450;
+}
+
+.wpgs-token-indicator.is-none .wpgs-status-dot {
+	background: #d63638;
+}
+
+.wpgs-repo-select-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.wpgs-repo-select-row .regular-text {
+	min-width: 320px;
+}

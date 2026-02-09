@@ -18,12 +18,23 @@ final class WPGS_Admin_Page_Settings {
 	 */
 	public static function render( array $view ): void {
 		$settings            = isset( $view['settings'] ) && is_array( $view['settings'] ) ? $view['settings'] : [];
+		$token_source        = (string) ( $view['token_source'] ?? 'none' );
 		$token_available     = ! empty( $view['token_available'] );
 		$repo_options        = isset( $view['repo_options'] ) && is_array( $view['repo_options'] ) ? $view['repo_options'] : [];
 		$repo_fetch_error    = (string) ( $view['repo_fetch_error'] ?? '' );
+		$refresh_repos_url   = (string) ( $view['refresh_repos_url'] ?? '' );
 		$post_type_options   = isset( $view['post_type_options'] ) && is_array( $view['post_type_options'] ) ? $view['post_type_options'] : [];
 		$included_post_types = isset( $view['included_post_types'] ) && is_array( $view['included_post_types'] ) ? $view['included_post_types'] : [];
 		$selected_repo_full  = (string) ( $view['selected_repo_full'] ?? '' );
+		$token_source_label  = 'Not configured';
+		$token_source_class  = 'is-none';
+		if ( 'wp_config' === $token_source ) {
+			$token_source_label = 'Using token from wp-config.php';
+			$token_source_class = 'is-config';
+		} elseif ( 'options' === $token_source ) {
+			$token_source_label = 'Using token from plugin options';
+			$token_source_class = 'is-options';
+		}
 		?>
 		<div class="wrap">
 			<h1>WP Git Sync</h1>
@@ -37,6 +48,10 @@ final class WPGS_Admin_Page_Settings {
 						<th scope="row"><label for="wpgs_pat_token">GitHub PAT token</label></th>
 						<td>
 							<input class="regular-text" type="password" autocomplete="new-password" id="wpgs_pat_token" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[pat_token]" value="" />
+							<p class="wpgs-token-indicator <?php echo esc_attr( $token_source_class ); ?>">
+								<span class="wpgs-status-dot" aria-hidden="true"></span>
+								<span><?php echo esc_html( $token_source_label ); ?></span>
+							</p>
 							<p class="description">Leave blank to keep the existing token. You can also define <code>WPGS_GITHUB_PAT</code> in <code>wp-config.php</code> (preferred).</p>
 						</td>
 					</tr>
@@ -50,12 +65,17 @@ final class WPGS_Admin_Page_Settings {
 					<tr>
 						<th scope="row"><label for="wpgs_github_repo_full">GitHub repo</label></th>
 						<td>
-							<select id="wpgs_github_repo_full" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_repo_full]" class="regular-text">
-								<option value="">Select a repository</option>
-								<?php foreach ( $repo_options as $repo_full ) : ?>
-									<option value="<?php echo esc_attr( (string) $repo_full ); ?>" <?php selected( (string) $repo_full, $selected_repo_full ); ?>><?php echo esc_html( (string) $repo_full ); ?></option>
-								<?php endforeach; ?>
-							</select>
+							<div class="wpgs-repo-select-row">
+								<select id="wpgs_github_repo_full" name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[github_repo_full]" class="regular-text">
+									<option value="">Select a repository</option>
+									<?php foreach ( $repo_options as $repo_full ) : ?>
+										<option value="<?php echo esc_attr( (string) $repo_full ); ?>" <?php selected( (string) $repo_full, $selected_repo_full ); ?>><?php echo esc_html( (string) $repo_full ); ?></option>
+									<?php endforeach; ?>
+								</select>
+								<?php if ( '' !== $refresh_repos_url ) : ?>
+									<a class="button" href="<?php echo esc_url( $refresh_repos_url ); ?>">Refresh</a>
+								<?php endif; ?>
+							</div>
 							<?php if ( '' !== $repo_fetch_error ) : ?>
 								<p class="description">Could not load repos from GitHub: <?php echo esc_html( $repo_fetch_error ); ?></p>
 							<?php else : ?>

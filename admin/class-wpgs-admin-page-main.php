@@ -106,13 +106,29 @@ final class WPGS_Admin_Page_Main {
 									id="wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
 									class="wpgs-type-panel"
 									role="tabpanel"
+									data-only-errors="0"
 									<?php echo 0 === $i ? '' : 'hidden'; ?>
 								>
-									<p><strong>Post count:</strong> <?php echo (int) $tab['count']; ?></p>
-									<p>
+									<p class="wpgs-type-counts">
+										<strong>Post count:</strong>
+										<span class="wpgs-type-post-count"><?php echo (int) $tab['count']; ?></span>
+										<span class="wpgs-type-error-summary"<?php echo (int) ( $tab['error_count'] ?? 0 ) > 0 ? '' : ' hidden'; ?>>
+											&nbsp;|&nbsp;<strong>Error count:</strong>
+											<span class="wpgs-type-error-count"><?php echo (int) ( $tab['error_count'] ?? 0 ); ?></span>
+										</span>
+									</p>
+									<p class="wpgs-type-action-row">
 										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>">
 											Export all <?php echo esc_html( (string) $tab['label'] ); ?>
 										</button>
+										<?php if ( (int) ( $tab['error_count'] ?? 0 ) > 0 ) : ?>
+											<button type="button" class="button button-secondary wpgs-retry-errors-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" data-post-label="<?php echo esc_attr( (string) $tab['label'] ); ?>">
+												Retry Errors
+											</button>
+											<button type="button" class="button wpgs-only-errors-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" aria-pressed="false">
+												Only Show Errors
+											</button>
+										<?php endif; ?>
 									</p>
 
 									<h3>Synced Posts</h3>
@@ -138,7 +154,7 @@ final class WPGS_Admin_Page_Main {
 											</thead>
 											<tbody>
 												<?php foreach ( $tab['rows'] as $row ) : ?>
-													<tr data-post-id="<?php echo (int) $row['id']; ?>">
+													<tr data-post-id="<?php echo (int) $row['id']; ?>" data-has-error="<?php echo ! empty( $row['last_error'] ) ? '1' : '0'; ?>">
 														<td>
 															<?php if ( ! empty( $row['edit_link'] ) ) : ?>
 																<a href="<?php echo esc_url( (string) $row['edit_link'] ); ?>"><?php echo esc_html( (string) $row['title'] ); ?></a>
@@ -164,6 +180,7 @@ final class WPGS_Admin_Page_Main {
 												<?php endforeach; ?>
 											</tbody>
 										</table>
+										<p class="description wpgs-only-errors-empty" hidden>No posts with sync errors for this post type.</p>
 									<?php endif; ?>
 								</section>
 							<?php endforeach; ?>

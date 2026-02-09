@@ -22,6 +22,8 @@
 	var typeTabLinks = typeTabsNav ? typeTabsNav.querySelectorAll('[data-type-tab]') : [];
 	var typePanels = document.querySelectorAll('.wpgs-type-panel');
 	var typeButtons = document.querySelectorAll('.wpgs-export-type-btn');
+	var retryErrorButtons = document.querySelectorAll('.wpgs-retry-errors-btn');
+	var onlyErrorButtons = document.querySelectorAll('.wpgs-only-errors-btn');
 	var syncButtons = document.querySelectorAll('.wpgs-sync-post-btn');
 	var isRunning = false;
 	var isPaused = false;
@@ -31,24 +33,27 @@
 	var pendingResumeData = null;
 	var latestProgressData = null;
 
-	function toBody(action, postType) {
+	function toBody(action, postType, onlyErrors) {
 		var body = new URLSearchParams();
 		body.append('action', action);
 		body.append('nonce', nonce);
 		if (postType) {
 			body.append('post_type', postType);
 		}
+		if (onlyErrors) {
+			body.append('only_errors', '1');
+		}
 		return body.toString();
 	}
 
-	function request(action, postType) {
+	function request(action, postType, onlyErrors) {
 		return fetch(ajaxUrl, {
 			method: 'POST',
 			credentials: 'same-origin',
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
 			},
-			body: toBody(action, postType)
+			body: toBody(action, postType, onlyErrors)
 		}).then(function (res) {
 			return res.json();
 		});
@@ -76,8 +81,11 @@
 		for (var i = 0; i < typeButtons.length; i++) {
 			typeButtons[i].disabled = !enabled;
 		}
-		for (var j = 0; j < syncButtons.length; j++) {
-			syncButtons[j].disabled = !enabled;
+		for (var j = 0; j < retryErrorButtons.length; j++) {
+			retryErrorButtons[j].disabled = !enabled;
+		}
+		for (var k = 0; k < syncButtons.length; k++) {
+			syncButtons[k].disabled = !enabled;
 		}
 	}
 
@@ -87,6 +95,66 @@
 		}
 		el.hidden = !visible;
 		el.style.display = visible ? '' : 'none';
+	}
+
+	function updateErrorSummary(panel) {
+		if (!panel) {
+			return;
+		}
+		var summary = panel.querySelector('.wpgs-type-error-summary');
+		var countNode = panel.querySelector('.wpgs-type-error-count');
+		var retryErrorsBtn = panel.querySelector('.wpgs-retry-errors-btn');
+		var onlyErrorsBtn = panel.querySelector('.wpgs-only-errors-btn');
+		if (!summary || !countNode) {
+			return;
+		}
+		var errorRows = panel.querySelectorAll('tbody tr[data-has-error="1"]');
+		var errorCount = errorRows ? errorRows.length : 0;
+		countNode.textContent = String(errorCount);
+		summary.hidden = errorCount < 1;
+		if (retryErrorsBtn) {
+			var hasRetryErrors = errorCount > 0;
+			retryErrorsBtn.hidden = !hasRetryErrors;
+			retryErrorsBtn.style.display = hasRetryErrors ? '' : 'none';
+		}
+		if (onlyErrorsBtn) {
+			var hasErrors = errorCount > 0;
+			onlyErrorsBtn.hidden = !hasErrors;
+			onlyErrorsBtn.style.display = hasErrors ? '' : 'none';
+			if (!hasErrors && panel.getAttribute('data-only-errors') === '1') {
+				panel.setAttribute('data-only-errors', '0');
+				onlyErrorsBtn.classList.remove('is-active');
+				onlyErrorsBtn.setAttribute('aria-pressed', 'false');
+				onlyErrorsBtn.textContent = 'Only Show Errors';
+			}
+		}
+	}
+
+	function applyOnlyErrorsFilter(panel) {
+		if (!panel) {
+			return;
+		}
+		var onlyErrors = panel.getAttribute('data-only-errors') === '1';
+		var rows = panel.querySelectorAll('tbody tr[data-post-id]');
+		var visibleCount = 0;
+		for (var i = 0; i < rows.length; i++) {
+			var hasError = rows[i].getAttribute('data-has-error') === '1';
+			var show = !onlyErrors || hasError;
+			rows[i].hidden = !show;
+			if (show) {
+				visibleCount++;
+			}
+		}
+
+		var emptyOnlyErrors = panel.querySelector('.wpgs-only-errors-empty');
+		if (emptyOnlyErrors) {
+			emptyOnlyErrors.hidden = !onlyErrors || visibleCount > 0;
+		}
+	}
+
+	function updatePanelErrorState(panel) {
+		updateErrorSummary(panel);
+		applyOnlyErrorsFilter(panel);
 	}
 
 	function refreshControlButtons() {
@@ -128,6 +196,7 @@
 		if (!row) {
 			return;
 		}
+		var panel = row.closest('.wpgs-type-panel');
 		var stateCell = row.querySelector('.wpgs-row-state');
 		var syncedCell = row.querySelector('.wpgs-row-last-synced');
 		var errorCell = row.querySelector('.wpgs-row-last-error');
@@ -146,6 +215,8 @@
 		if (errorCell && hasErrorField) {
 			errorCell.textContent = hasError ? String(state.last_error) : '—';
 		}
+		row.setAttribute('data-has-error', hasError ? '1' : '0');
+		updatePanelErrorState(panel);
 	}
 
 	function finishRun(data) {
@@ -172,6 +243,16 @@
 		window.setTimeout(pollStep, 200);
 	}
 
+	function pauseByServer(data) {
+		isRunning = false;
+		isPaused = true;
+		pendingResumeData = data || latestProgressData || {};
+		latestProgressData = pendingResumeData;
+		btn.textContent = 'Export Paused';
+		renderProgress(pendingResumeData);
+		refreshControlButtons();
+	}
+
 	function pollStep() {
 		if (!isRunning || isPaused) {
 			return;
@@ -186,6 +267,10 @@
 				}
 				var data = res.data || {};
 				renderProgress(data);
+				if (data.paused) {
+					pauseByServer(data);
+					return;
+				}
 				if (data.done) {
 					finishRun(data);
 					return;
@@ -211,7 +296,7 @@
 			});
 	}
 
-	function startBatch(postType, scopeLabel) {
+	function startBatch(postType, scopeLabel, onlyErrors) {
 		if (isRunning || isPaused || isStopping) {
 			return;
 		}
@@ -228,7 +313,7 @@
 		btn.textContent = 'Exporting...';
 		refreshControlButtons();
 
-		request('wpgs_export_batch_start', postType)
+		request('wpgs_export_batch_start', postType, !!onlyErrors)
 			.then(function (res) {
 				if (!res.success) {
 					throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
@@ -294,14 +379,38 @@
 	}
 
 	btn.addEventListener('click', function () {
-		startBatch('', 'All post types');
+		startBatch('', 'All post types', false);
 	});
 
 	for (var t = 0; t < typeButtons.length; t++) {
 		typeButtons[t].addEventListener('click', function () {
 			var postType = this.getAttribute('data-post-type') || '';
 			var label = this.textContent ? this.textContent.replace(/^Export all\s+/i, '') : postType;
-			startBatch(postType, label);
+			startBatch(postType, label, false);
+		});
+	}
+
+	for (var r = 0; r < retryErrorButtons.length; r++) {
+		retryErrorButtons[r].addEventListener('click', function () {
+			var postType = this.getAttribute('data-post-type') || '';
+			var label = this.getAttribute('data-post-label') || postType;
+			startBatch(postType, label + ' errors', true);
+		});
+	}
+
+	for (var e = 0; e < onlyErrorButtons.length; e++) {
+		onlyErrorButtons[e].addEventListener('click', function () {
+			var panel = this.closest('.wpgs-type-panel');
+			if (!panel) {
+				return;
+			}
+			var onlyErrors = panel.getAttribute('data-only-errors') === '1';
+			var nextOnlyErrors = !onlyErrors;
+			panel.setAttribute('data-only-errors', nextOnlyErrors ? '1' : '0');
+			this.setAttribute('aria-pressed', nextOnlyErrors ? 'true' : 'false');
+			this.classList.toggle('is-active', nextOnlyErrors);
+			this.textContent = nextOnlyErrors ? 'Show All' : 'Only Show Errors';
+			applyOnlyErrorsFilter(panel);
 		});
 	}
 
@@ -399,11 +508,22 @@
 			pendingResumeData = data;
 			progressWrap.hidden = false;
 			renderProgress(data);
-			progressText.textContent += ' Click Resume Export to continue.';
+			if (data.paused) {
+				progressText.textContent += ' Wait a few minutes, then click Resume Export.';
+				isPaused = true;
+				isRunning = false;
+				btn.textContent = 'Export Paused';
+			} else {
+				progressText.textContent += ' Click Resume Export to continue.';
+			}
 			refreshControlButtons();
 			setExportButtonsEnabled(false);
 		})
 		.catch(function () {
 			// Keep manual start action available.
 		});
+
+	for (var p = 0; p < typePanels.length; p++) {
+		updatePanelErrorState(typePanels[p]);
+	}
 })();

@@ -114,6 +114,16 @@ final class WPGS_Admin {
 				WPGS_VERSION,
 				true
 			);
+			return;
+		}
+
+		if ( 'settings' === $tab ) {
+			wp_enqueue_style(
+				'wpgs-admin-settings',
+				$base . 'admin/css/wpgs-admin-settings.css',
+				[],
+				WPGS_VERSION
+			);
 		}
 	}
 
@@ -225,9 +235,10 @@ final class WPGS_Admin {
 	 * Collect post IDs to export in deterministic order.
 	 *
 	 * @param string[] $post_types Post types.
+	 * @param bool     $only_errors Whether to include only posts currently in error state.
 	 * @return int[]
 	 */
-	private static function collect_export_post_ids( array $post_types = [ 'post', 'page' ] ): array {
+	private static function collect_export_post_ids( array $post_types = [ 'post', 'page' ], bool $only_errors = false ): array {
 		$statuses = self::exportable_post_statuses();
 		$post_ids = [];
 		foreach ( $post_types as $post_type ) {
@@ -240,14 +251,21 @@ final class WPGS_Admin {
 					'orderby'                => 'ID',
 					'order'                  => 'ASC',
 					'no_found_rows'          => true,
-					'update_post_meta_cache' => false,
+					'update_post_meta_cache' => true,
 					'update_post_term_cache' => false,
 				]
 			);
 
 			if ( ! empty( $q->posts ) && is_array( $q->posts ) ) {
 				foreach ( $q->posts as $id ) {
-					$post_ids[] = (int) $id;
+					$post_id = (int) $id;
+					if ( $only_errors ) {
+						$last_error = trim( (string) get_post_meta( $post_id, WPGS_Sync_Meta::KEY_LAST_ERROR, true ) );
+						if ( '' === $last_error ) {
+							continue;
+						}
+					}
+					$post_ids[] = $post_id;
 				}
 			}
 		}
@@ -310,7 +328,7 @@ final class WPGS_Admin {
 	 * Build post-type tab data for the overview repository card.
 	 *
 	 * @param string[] $post_types Post types to include.
-	 * @return array<int,array{slug:string,label:string,count:int,rows:array<int,array{id:int,title:string,edit_link:string,synced:bool,last_synced_at:string,last_error:string}>}>
+	 * @return array<int,array{slug:string,label:string,count:int,error_count:int,rows:array<int,array{id:int,title:string,edit_link:string,synced:bool,last_synced_at:string,last_error:string}>}>
 	 */
 	private static function post_type_tab_data( array $post_types ): array {
 		$statuses = self::exportable_post_statuses();
@@ -342,12 +360,16 @@ final class WPGS_Admin {
 
 			$ids = is_array( $q->posts ) ? array_map( 'intval', $q->posts ) : [];
 			$rows = [];
+			$error_count = 0;
 			foreach ( $ids as $id ) {
 				$state = WPGS_Sync_Meta::get( $id );
 				$synced = WPGS_Sync_Meta::is_synced( $id );
 				$last_error = trim( (string) ( $state['last_error'] ?? '' ) );
 				if ( ! $synced && '' === $last_error ) {
 					continue;
+				}
+				if ( '' !== $last_error ) {
+					++$error_count;
 				}
 
 				$title = get_the_title( $id );
@@ -363,10 +385,11 @@ final class WPGS_Admin {
 			}
 
 			$data[] = [
-				'slug'  => $slug,
-				'label' => $label,
-				'count' => count( $ids ),
-				'rows'  => $rows,
+				'slug'        => $slug,
+				'label'       => $label,
+				'count'       => count( $ids ),
+				'error_count' => $error_count,
+				'rows'        => $rows,
 			];
 		}
 
@@ -376,9 +399,11 @@ final class WPGS_Admin {
 	/**
 	 * Start (or restart) an export-all batch for the current user.
 	 *
+	 * @param string[] $post_types Post types to include.
+	 * @param bool     $only_errors Whether to queue only posts currently marked with sync errors.
 	 * @return array<string,mixed>
 	 */
-	private static function start_export_batch( array $post_types = [] ): array {
+	private static function start_export_batch( array $post_types = [], bool $only_errors = false ): array {
 		$settings = WPGS_Settings::get();
 		$owner = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo  = trim( (string) ( $settings['github_repo'] ?? '' ) );
@@ -404,14 +429,20 @@ final class WPGS_Admin {
 		if ( empty( $post_types ) ) {
 			throw new RuntimeException( 'No included post types configured. Update settings first.' );
 		}
-		$post_ids = self::collect_export_post_ids( $post_types );
+		$post_ids = self::collect_export_post_ids( $post_types, $only_errors );
 		$total_posts = count( $post_ids );
 		$total_steps = $total_posts + 1; // +1 finalization step.
+		$scope_label = self::batch_scope_label( $post_types );
+		if ( $only_errors ) {
+			$scope_label .= ' (errors)';
+		}
 
 		$batch = [
 			'post_types'      => $post_types,
-			'scope_label'     => self::batch_scope_label( $post_types ),
+			'scope_label'     => $scope_label,
+			'only_errors'     => $only_errors,
 			'queue'           => $post_ids,
+			'paused'          => false,
 			'total_posts'     => $total_posts,
 			'processed_posts' => 0,
 			'processed_steps' => 0,
@@ -422,7 +453,7 @@ final class WPGS_Admin {
 			'last_step'       => [
 				'type'    => 'start',
 				'ok'      => true,
-				'message' => 'Batch queued.',
+				'message' => $only_errors ? 'Error-only batch queued.' : 'Batch queued.',
 			],
 			'started_at'      => gmdate( 'c' ),
 			'updated_at'      => gmdate( 'c' ),
@@ -430,6 +461,36 @@ final class WPGS_Admin {
 
 		set_transient( self::export_batch_transient_key(), $batch, 2 * HOUR_IN_SECONDS );
 		return $batch;
+	}
+
+	/**
+	 * Determine whether an exception message indicates a GitHub API rate-limit failure.
+	 *
+	 * @param string $message Error message.
+	 * @return bool
+	 */
+	private static function is_github_rate_limit_error_message( string $message ): bool {
+		$needle = strtolower( trim( $message ) );
+		if ( '' === $needle ) {
+			return false;
+		}
+
+		foreach ( [ 'api rate limit exceeded', 'rate limit exceeded', 'secondary rate limit' ] as $fragment ) {
+			if ( false !== strpos( $needle, $fragment ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Standard user-facing message for paused exports caused by API rate limits.
+	 *
+	 * @return string
+	 */
+	private static function github_rate_limit_pause_message(): string {
+		return 'GitHub API rate limit reached. Export paused automatically. Please wait a few minutes, then click Resume Export.';
 	}
 
 	/**
@@ -454,6 +515,7 @@ final class WPGS_Admin {
 		return [
 			'scope_label' => (string) ( $batch['scope_label'] ?? 'All post types' ),
 			'done'      => $done,
+			'paused'    => ! empty( $batch['paused'] ),
 			'processed' => $processed_posts,
 			'total'     => $total_posts,
 			'remaining' => isset( $batch['queue'] ) && is_array( $batch['queue'] ) ? count( $batch['queue'] ) : 0,
@@ -478,12 +540,16 @@ final class WPGS_Admin {
 			throw new RuntimeException( 'No active export batch. Start a new export first.' );
 		}
 
+		$batch['paused'] = false;
+
 		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
 		$last_step = [
 			'type'    => '',
 			'ok'      => true,
 			'message' => '',
 		];
+		$count_step = false;
+		$count_post = false;
 
 		$queue = isset( $batch['queue'] ) && is_array( $batch['queue'] ) ? $batch['queue'] : [];
 		if ( ! empty( $queue ) ) {
@@ -498,23 +564,40 @@ final class WPGS_Admin {
 					'message' => sprintf( 'Exported post #%d', $post_id ),
 					'post_id' => $post_id,
 				];
+				$count_step = true;
+				$count_post = true;
 			} catch ( Throwable $e ) {
-				WPGS_Sync_Meta::set_error( $post_id, (string) $e->getMessage() );
-				if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
-					$batch['failed'] = [];
+				$error_message = (string) $e->getMessage();
+				if ( self::is_github_rate_limit_error_message( $error_message ) ) {
+					array_unshift( $queue, $post_id );
+					$batch['queue'] = $queue;
+					$batch['paused'] = true;
+					$last_step = [
+						'type'         => 'pause',
+						'ok'           => false,
+						'rate_limited' => true,
+						'message'      => self::github_rate_limit_pause_message(),
+						'error'        => $error_message,
+					];
+				} else {
+					WPGS_Sync_Meta::set_error( $post_id, $error_message );
+					if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
+						$batch['failed'] = [];
+					}
+					$batch['failed'][] = [
+						'post_id' => $post_id,
+						'error'   => $error_message,
+					];
+					$last_step = [
+						'type'    => 'post',
+						'ok'      => false,
+						'message' => sprintf( 'Failed exporting post #%d: %s', $post_id, $error_message ),
+						'post_id' => $post_id,
+					];
+					$count_step = true;
+					$count_post = true;
 				}
-				$batch['failed'][] = [
-					'post_id' => $post_id,
-					'error'   => (string) $e->getMessage(),
-				];
-				$last_step = [
-					'type'    => 'post',
-					'ok'      => false,
-					'message' => sprintf( 'Failed exporting post #%d: %s', $post_id, (string) $e->getMessage() ),
-					'post_id' => $post_id,
-				];
 			}
-			$batch['processed_posts'] = (int) ( $batch['processed_posts'] ?? 0 ) + 1;
 		} elseif ( empty( $batch['finalized'] ) ) {
 			try {
 					$post_types = isset( $batch['post_types'] ) && is_array( $batch['post_types'] )
@@ -526,25 +609,44 @@ final class WPGS_Admin {
 					'ok'      => true,
 					'message' => 'Finalized export batch cleanup.',
 				];
+				$batch['finalized'] = true;
+				$count_step = true;
 			} catch ( Throwable $e ) {
-				if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
-					$batch['failed'] = [];
+				$error_message = (string) $e->getMessage();
+				if ( self::is_github_rate_limit_error_message( $error_message ) ) {
+					$batch['paused'] = true;
+					$last_step = [
+						'type'         => 'pause',
+						'ok'           => false,
+						'rate_limited' => true,
+						'message'      => self::github_rate_limit_pause_message(),
+						'error'        => $error_message,
+					];
+				} else {
+					if ( ! isset( $batch['failed'] ) || ! is_array( $batch['failed'] ) ) {
+						$batch['failed'] = [];
+					}
+					$batch['failed'][] = [
+						'post_id' => 0,
+						'error'   => $error_message,
+					];
+					$last_step = [
+						'type'    => 'finalize',
+						'ok'      => false,
+						'message' => 'Finalize step failed: ' . $error_message,
+					];
+					$batch['finalized'] = true;
+					$count_step = true;
 				}
-				$batch['failed'][] = [
-					'post_id' => 0,
-					'error'   => (string) $e->getMessage(),
-				];
-				$last_step = [
-					'type'    => 'finalize',
-					'ok'      => false,
-					'message' => 'Finalize step failed: ' . (string) $e->getMessage(),
-				];
 			}
-
-			$batch['finalized'] = true;
 		}
 
-		$batch['processed_steps'] = (int) ( $batch['processed_steps'] ?? 0 ) + 1;
+		if ( $count_step ) {
+			$batch['processed_steps'] = (int) ( $batch['processed_steps'] ?? 0 ) + 1;
+		}
+		if ( $count_post ) {
+			$batch['processed_posts'] = (int) ( $batch['processed_posts'] ?? 0 ) + 1;
+		}
 		$batch['updated_at']      = gmdate( 'c' );
 
 		$done = ( empty( $batch['queue'] ) && ! empty( $batch['finalized'] ) );
@@ -621,25 +723,41 @@ final class WPGS_Admin {
 		}
 
 		$settings = WPGS_Settings::get();
+		$token_source = WPGS_Auth::token_source( $settings );
+		$refresh_requested = '1' === self::get_query_string( 'wpgs_refresh_repos', '' );
+		$refresh_nonce = self::get_query_string( '_wpgs_refresh_nonce', '' );
+		$force_repo_refresh = $refresh_requested && wp_verify_nonce( $refresh_nonce, 'wpgs_refresh_repos' );
+		$refresh_repos_url = wp_nonce_url(
+			self::tools_page_url(
+				[
+					'tab'                => 'settings',
+					'wpgs_refresh_repos' => '1',
+				]
+			),
+			'wpgs_refresh_repos',
+			'_wpgs_refresh_nonce'
+		);
 		$selected_repo_full = '';
 		if ( '' !== trim( (string) $settings['github_owner'] ) && '' !== trim( (string) $settings['github_repo'] ) ) {
 			$selected_repo_full = trim( (string) $settings['github_owner'] ) . '/' . trim( (string) $settings['github_repo'] );
 		}
 
-		$token_available = false;
+		$token_available = 'none' !== $token_source;
 		$repo_options = [];
 		$repo_fetch_error = '';
-		try {
-			$token = WPGS_Auth::get_token( $settings );
-			$token_available = true;
-			$repos = self::fetch_repo_options( $token );
-			if ( is_wp_error( $repos ) ) {
-				$repo_fetch_error = $repos->get_error_message();
-			} else {
-				$repo_options = $repos;
+		if ( $token_available ) {
+			try {
+				$token = WPGS_Auth::get_token( $settings );
+				$repos = self::fetch_repo_options( $token, $force_repo_refresh );
+				if ( is_wp_error( $repos ) ) {
+					$repo_fetch_error = $repos->get_error_message();
+				} else {
+					$repo_options = $repos;
+				}
+			} catch ( Throwable $e ) {
+				$token_available = false;
+				$token_source = 'none';
 			}
-		} catch ( Throwable $e ) {
-			$token_available = false;
 		}
 
 		if ( '' !== $selected_repo_full && ! in_array( $selected_repo_full, $repo_options, true ) ) {
@@ -654,9 +772,11 @@ final class WPGS_Admin {
 		WPGS_Admin_Page_Settings::render(
 			[
 				'settings'            => $settings,
+				'token_source'        => $token_source,
 				'token_available'     => $token_available,
 				'repo_options'        => $repo_options,
 				'repo_fetch_error'    => $repo_fetch_error,
+				'refresh_repos_url'   => $refresh_repos_url,
 				'post_type_options'   => $post_type_options,
 				'included_post_types' => $included_post_types,
 				'selected_repo_full'  => $selected_repo_full,
@@ -677,6 +797,7 @@ final class WPGS_Admin {
 
 		try {
 			$post_type = isset( $_POST['post_type'] ) ? sanitize_key( (string) wp_unslash( $_POST['post_type'] ) ) : '';
+			$only_errors = isset( $_POST['only_errors'] ) && '1' === (string) wp_unslash( $_POST['only_errors'] );
 			$post_types = [];
 			if ( '' !== $post_type ) {
 				$allowed = self::included_post_types();
@@ -686,13 +807,13 @@ final class WPGS_Admin {
 				$post_types = [ $post_type ];
 			}
 
-			$batch = self::start_export_batch( $post_types );
+			$batch = self::start_export_batch( $post_types, $only_errors );
 			$payload = self::export_batch_progress_payload(
 				$batch,
 				[
 					'type'    => 'start',
 					'ok'      => true,
-					'message' => 'Batch queued.',
+					'message' => $only_errors ? 'Error-only batch queued.' : 'Batch queued.',
 				],
 				false
 			);
@@ -1429,16 +1550,20 @@ final class WPGS_Admin {
 	 * @param string $token GitHub PAT.
 	 * @return array<int,string>|WP_Error
 	 */
-	private static function fetch_repo_options( string $token ) {
+	private static function fetch_repo_options( string $token, bool $force_refresh = false ) {
 		$token = trim( $token );
 		if ( '' === $token ) {
 			return [];
 		}
 
 		$cache_key = 'wpgs_repo_opts_' . substr( sha1( $token ), 0, 16 );
-		$cached = get_transient( $cache_key );
-		if ( is_array( $cached ) ) {
-			return $cached;
+		if ( $force_refresh ) {
+			delete_transient( $cache_key );
+		} else {
+			$cached = get_transient( $cache_key );
+			if ( is_array( $cached ) ) {
+				return $cached;
+			}
 		}
 
 		$repos = [];

@@ -81,3 +81,10 @@ Required permissions for the selected repo:
 - Meta export is sourced from `get_post_meta( $post_id )` only.
 - Meta blacklist defaults to excluding `_edit_lock`.
   - Additional excluded keys can be provided via the `wpgs_export_postmeta_blacklist` filter.
+
+## Rate limit handling
+
+- Export batches detect GitHub API rate-limit responses (for example `403 API rate limit exceeded`).
+- When detected, the plugin pauses the current batch automatically and keeps remaining items queued.
+- In the Overview export UI, wait a few minutes, then click **Resume Export** to continue the same batch.
+- Non-rate-limit export failures continue to be recorded per post as sync errors.

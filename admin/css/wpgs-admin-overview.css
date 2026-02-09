@@ -46,6 +46,24 @@
 	margin-top: 16px;
 }
 
+.wpgs-type-counts {
+	margin: 0 0 10px;
+}
+
+.wpgs-type-action-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+	margin: 0 0 10px;
+}
+
+.wpgs-only-errors-btn.is-active {
+	background: #edf6ff;
+	border-color: #2271b1;
+	color: #1d4f7a;
+}
+
 .wpgs-type-tabs-nav {
 	margin-bottom: 12px;
 }
@@ -82,6 +100,10 @@
 .wpgs-sync-table td.wpgs-row-last-error {
 	white-space: normal;
 	word-break: break-word;
+}
+
+.wpgs-only-errors-empty {
+	margin-top: 8px;
 }
 
 .wpgs-sync-table td.wpgs-row-actions {
