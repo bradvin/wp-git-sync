@@ -63,6 +63,7 @@ final class WPGS_Settings {
 			'github_repo' => '',
 			'branch' => 'main',
 			'included_post_types' => [ 'post', 'page' ],
+			'excluded_post_meta' => '',
 		];
 	}
 
@@ -117,6 +118,14 @@ final class WPGS_Settings {
 		}
 		$out['included_post_types'] = array_values( array_unique( $included ) );
 
+		if ( isset( $raw['excluded_post_meta'] ) ) {
+			$out['excluded_post_meta'] = self::sanitize_excluded_post_meta_input( (string) $raw['excluded_post_meta'] );
+		} else {
+			$out['excluded_post_meta'] = isset( $prev['excluded_post_meta'] )
+				? self::sanitize_excluded_post_meta_input( (string) $prev['excluded_post_meta'] )
+				: '';
+		}
+
 		if ( isset( $raw['github_repo_full'] ) ) {
 			$repo_full = trim( (string) $raw['github_repo_full'] );
 			if ( '' !== $repo_full && false !== strpos( $repo_full, '/' ) ) {
@@ -143,6 +152,27 @@ final class WPGS_Settings {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Parse saved excluded-post-meta setting into a normalized list.
+	 *
+	 * @param array<string,mixed>|null $settings Optional settings payload.
+	 * @return string[]
+	 */
+	public static function excluded_post_meta_keys( ?array $settings = null ): array {
+		$settings = is_array( $settings ) ? array_merge( self::defaults(), $settings ) : self::get();
+		$raw = isset( $settings['excluded_post_meta'] ) ? (string) $settings['excluded_post_meta'] : '';
+
+		$keys = [];
+		foreach ( preg_split( '/\r\n|\r|\n/', $raw ) ?: [] as $line ) {
+			$key = sanitize_text_field( trim( (string) $line ) );
+			if ( '' !== $key ) {
+				$keys[] = $key;
+			}
+		}
+
+		return array_values( array_unique( $keys ) );
 	}
 
 	/**
@@ -189,5 +219,25 @@ final class WPGS_Settings {
 			return [ (string) $m[1], (string) $m[2] ];
 		}
 		return [ '', '' ];
+	}
+
+	/**
+	 * Sanitize textarea input for excluded post-meta keys.
+	 *
+	 * Stores one key per line for predictable editing and diffs.
+	 *
+	 * @param string $raw Raw textarea input.
+	 * @return string
+	 */
+	private static function sanitize_excluded_post_meta_input( string $raw ): string {
+		$keys = [];
+		foreach ( preg_split( '/\r\n|\r|\n/', $raw ) ?: [] as $line ) {
+			$key = sanitize_text_field( trim( (string) $line ) );
+			if ( '' !== $key ) {
+				$keys[] = $key;
+			}
+		}
+
+		return implode( "\n", array_values( array_unique( $keys ) ) );
 	}
 }

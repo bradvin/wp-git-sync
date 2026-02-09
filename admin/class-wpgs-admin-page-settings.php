@@ -113,6 +113,19 @@ final class WPGS_Admin_Page_Settings {
 							<p class="description"><?php esc_html_e( 'Only selected post types appear on Overview and are exported by Export All Posts.', 'wp-git-sync' ); ?></p>
 						</td>
 					</tr>
+					<tr>
+						<th scope="row"><label for="wpgs_excluded_post_meta"><?php esc_html_e( 'Excluded Post Meta Keys', 'wp-git-sync' ); ?></label></th>
+						<td>
+							<textarea
+								class="large-text code"
+								rows="8"
+								id="wpgs_excluded_post_meta"
+								name="<?php echo esc_attr( WPGS_Settings::OPTION_KEY ); ?>[excluded_post_meta]"
+								placeholder="_edit_lock&#10;_edit_last"
+							><?php echo esc_textarea( (string) ( $settings['excluded_post_meta'] ?? '' ) ); ?></textarea>
+							<p class="description"><?php esc_html_e( 'Enter one post meta key per line. These keys will be excluded from meta export and diff checks.', 'wp-git-sync' ); ?></p>
+						</td>
+					</tr>
 				</table>
 
 				<?php submit_button( __( 'Save settings', 'wp-git-sync' ) ); ?>

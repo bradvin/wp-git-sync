@@ -81,7 +81,10 @@ final class WPGS_Diff {
 	 * @return string[]
 	 */
 	public static function meta_blacklist(): array {
-		$blacklist = [ '_edit_lock' ];
+		$blacklist = array_merge(
+			[ '_edit_lock' ],
+			WPGS_Settings::excluded_post_meta_keys()
+		);
 
 		/**
 		 * Filter post-meta keys excluded from export.
