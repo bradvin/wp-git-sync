@@ -31,78 +31,78 @@ final class WPGS_Admin_Page_Main {
 		$post_type_tabs       = isset( $view['post_type_tabs'] ) && is_array( $view['post_type_tabs'] ) ? $view['post_type_tabs'] : [];
 		?>
 		<div class="wrap">
-			<h1>WP Git Sync</h1>
+			<h1><?php esc_html_e( 'WP Git Sync', 'wp-git-sync' ); ?></h1>
 			<?php WPGS_Admin::render_primary_tabs( 'overview' ); ?>
 			<?php if ( 'repo_setup' === $state ) : ?>
-				<div class="notice notice-success inline"><p>Repository branch was prepared successfully.</p></div>
+				<div class="notice notice-success inline"><p><?php esc_html_e( 'Repository branch was prepared successfully.', 'wp-git-sync' ); ?></p></div>
 			<?php elseif ( 'exported' === $state ) : ?>
-				<div class="notice notice-success inline"><p>Export completed successfully.</p></div>
+				<div class="notice notice-success inline"><p><?php esc_html_e( 'Export completed successfully.', 'wp-git-sync' ); ?></p></div>
 			<?php elseif ( 'batch_started' === $state ) : ?>
-				<div class="notice notice-info inline"><p>Export batch started. Progress appears below.</p></div>
+				<div class="notice notice-info inline"><p><?php esc_html_e( 'Export batch started. Progress appears below.', 'wp-git-sync' ); ?></p></div>
 			<?php endif; ?>
 
 			<?php if ( ! $repo_ready ) : ?>
 				<div class="notice notice-warning inline">
-					<p>GitHub repo is not configured yet. <a href="<?php echo esc_url( $settings_url ); ?>">Setup a repo in Settings</a>.</p>
+					<p><?php echo wp_kses_post( sprintf( __( 'GitHub repo is not configured yet. <a href="%s">Setup a repo in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
 				</div>
 			<?php else : ?>
 				<div class="wpgs-overview-card">
-					<h2>Repository</h2>
+					<h2><?php esc_html_e( 'Repository', 'wp-git-sync' ); ?></h2>
 					<p class="wpgs-repo-status">
 						<span id="wpgs-repo-status-dot" class="wpgs-status-dot <?php echo esc_attr( $repo_dot_class ); ?>" aria-hidden="true"></span>
 						<strong><?php echo esc_html( $repo_full ); ?></strong>
-						<span>on</span>
+						<span><?php esc_html_e( 'on', 'wp-git-sync' ); ?></span>
 						<code><?php echo esc_html( $branch ); ?></code>
 					</p>
 					<p id="wpgs-rate-limit-summary" class="description wpgs-rate-limit-summary"><?php echo esc_html( $rate_limit_summary ); ?></p>
 
 					<div class="wpgs-action-row">
-						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer">Open Repo</a></p>
+						<p><a class="button" href="<?php echo esc_url( $repo_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open Repo', 'wp-git-sync' ); ?></a></p>
 						<p>
-							<button type="button" class="button button-secondary" id="wpgs-setup-repo-toggle-btn" aria-expanded="false" aria-controls="wpgs-setup-repo-confirm">Setup Repo</button>
+							<button type="button" class="button button-secondary" id="wpgs-setup-repo-toggle-btn" aria-expanded="false" aria-controls="wpgs-setup-repo-confirm"><?php esc_html_e( 'Setup Repo', 'wp-git-sync' ); ?></button>
 						</p>
 					</div>
 
 					<div id="wpgs-setup-repo-confirm" class="wpgs-setup-repo-confirm" hidden>
-						<p class="wpgs-danger-note"><strong>Warning:</strong> Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.</p>
+						<p class="wpgs-danger-note"><strong><?php esc_html_e( 'Warning:', 'wp-git-sync' ); ?></strong> <?php esc_html_e( 'Setup Repo is destructive. It creates the configured branch if needed, then resets that branch to an empty tree.', 'wp-git-sync' ); ?></p>
 						<div class="wpgs-setup-repo-actions">
 							<form method="post" action="<?php echo esc_url( $action_url ); ?>">
 								<input type="hidden" name="action" value="wpgs_setup_repo" />
 								<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_setup_repo' ) ); ?>" />
-								<?php submit_button( 'Confirm Setup Repo', 'wpgs-button-danger', 'submit', false ); ?>
+								<?php submit_button( __( 'Confirm Setup Repo', 'wp-git-sync' ), 'wpgs-button-danger', 'submit', false ); ?>
 							</form>
-							<button type="button" class="button button-secondary" id="wpgs-setup-repo-cancel-btn">Cancel</button>
+							<button type="button" class="button button-secondary" id="wpgs-setup-repo-cancel-btn"><?php esc_html_e( 'Cancel', 'wp-git-sync' ); ?></button>
 						</div>
 					</div>
 				</div>
 
 				<div class="wpgs-overview-card wpgs-export-card">
-					<h2>Export Posts</h2>
+					<h2><?php esc_html_e( 'Export Posts', 'wp-git-sync' ); ?></h2>
 					<?php if ( empty( $included_post_types ) ) : ?>
-						<p class="description">No Included Post Types are selected. <a href="<?php echo esc_url( $settings_url ); ?>">Choose at least one in Settings</a>.</p>
+						<p class="description"><?php echo wp_kses_post( sprintf( __( 'No Included Post Types are selected. <a href="%s">Choose at least one in Settings</a>.', 'wp-git-sync' ), esc_url( $settings_url ) ) ); ?></p>
 					<?php else : ?>
-						<p class="description">Start, resume, or stop export batches for included post types.</p>
+						<p class="description"><?php esc_html_e( 'Start, resume, or stop export batches for included post types.', 'wp-git-sync' ); ?></p>
 					<?php endif; ?>
 					<p class="wpgs-action-row">
-						<button type="button" class="button button-primary" id="wpgs-export-all-btn">Export All Posts</button>
+						<button type="button" class="button button-primary" id="wpgs-export-all-btn"><?php esc_html_e( 'Export All Posts', 'wp-git-sync' ); ?></button>
 						<span id="wpgs-export-controls" class="wpgs-export-controls" hidden>
-							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden>Resume Export</button>
-							<button type="button" class="button button-secondary" id="wpgs-export-stop-btn" hidden>Stop Export</button>
+							<button type="button" class="button button-secondary" id="wpgs-export-resume-btn" hidden><?php esc_html_e( 'Resume Export', 'wp-git-sync' ); ?></button>
+							<button type="button" class="button button-secondary" id="wpgs-export-stop-btn" hidden><?php esc_html_e( 'Stop Export', 'wp-git-sync' ); ?></button>
 						</span>
 					</p>
 					<div id="wpgs-export-progress" class="wpgs-export-progress" hidden>
 						<div class="wpgs-export-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
 							<span id="wpgs-export-progress-fill"></span>
 						</div>
-						<p id="wpgs-export-progress-text" class="description">Preparing export batch...</p>
+						<p id="wpgs-export-progress-text" class="description"><?php esc_html_e( 'Preparing export batch...', 'wp-git-sync' ); ?></p>
 					</div>
 				</div>
 
 				<?php if ( ! empty( $post_type_tabs ) ) : ?>
 					<div class="wpgs-overview-card wpgs-post-types-card">
-						<h2>Post Types</h2>
+						<h2><?php esc_html_e( 'Post Types', 'wp-git-sync' ); ?></h2>
 						<div class="wpgs-type-tabs-wrap">
-							<nav class="nav-tab-wrapper wpgs-type-tabs-nav" id="wpgs-type-tabs-nav" role="tablist" aria-label="Post Types">
+							<nav class="nav-tab-wrapper wpgs-type-tabs-nav" id="wpgs-type-tabs-nav" role="tablist" aria-label="<?php echo esc_attr__( 'Post Types', 'wp-git-sync' ); ?>">
 								<?php foreach ( $post_type_tabs as $i => $tab ) : ?>
 									<a
 										href="#wpgs-type-tab-<?php echo esc_attr( (string) $tab['slug'] ); ?>"
@@ -123,30 +123,30 @@ final class WPGS_Admin_Page_Main {
 									<?php echo 0 === $i ? '' : 'hidden'; ?>
 								>
 									<p class="wpgs-type-counts">
-										<strong>Post count:</strong>
+										<strong><?php esc_html_e( 'Post count:', 'wp-git-sync' ); ?></strong>
 										<span class="wpgs-type-post-count"><?php echo (int) $tab['count']; ?></span>
 										<span class="wpgs-type-error-summary"<?php echo (int) ( $tab['error_count'] ?? 0 ) > 0 ? '' : ' hidden'; ?>>
-											&nbsp;|&nbsp;<strong>Error count:</strong>
+											&nbsp;|&nbsp;<strong><?php esc_html_e( 'Error count:', 'wp-git-sync' ); ?></strong>
 											<span class="wpgs-type-error-count"><?php echo (int) ( $tab['error_count'] ?? 0 ); ?></span>
 										</span>
 									</p>
 									<p class="wpgs-type-action-row">
-										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>">
-											Export all <?php echo esc_html( (string) $tab['label'] ); ?>
+										<button type="button" class="button button-secondary wpgs-export-type-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" data-post-label="<?php echo esc_attr( (string) $tab['label'] ); ?>">
+											<?php echo esc_html( sprintf( __( 'Export all %s', 'wp-git-sync' ), (string) $tab['label'] ) ); ?>
 										</button>
 										<?php if ( (int) ( $tab['error_count'] ?? 0 ) > 0 ) : ?>
 											<button type="button" class="button button-secondary wpgs-retry-errors-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" data-post-label="<?php echo esc_attr( (string) $tab['label'] ); ?>">
-												Retry Errors
+												<?php esc_html_e( 'Retry Errors', 'wp-git-sync' ); ?>
 											</button>
 											<button type="button" class="button wpgs-only-errors-btn" data-post-type="<?php echo esc_attr( (string) $tab['slug'] ); ?>" aria-pressed="false">
-												Only Show Errors
+												<?php esc_html_e( 'Only Show Errors', 'wp-git-sync' ); ?>
 											</button>
 										<?php endif; ?>
 									</p>
 
-									<h3>Synced Posts</h3>
+									<h3><?php esc_html_e( 'Synced Posts', 'wp-git-sync' ); ?></h3>
 									<?php if ( empty( $tab['rows'] ) ) : ?>
-										<p class="description">No synced/error posts found for this post type.</p>
+										<p class="description"><?php esc_html_e( 'No synced/error posts found for this post type.', 'wp-git-sync' ); ?></p>
 									<?php else : ?>
 										<table class="widefat striped wpgs-sync-table">
 											<colgroup>
@@ -158,11 +158,11 @@ final class WPGS_Admin_Page_Main {
 											</colgroup>
 											<thead>
 												<tr>
-													<th>Post</th>
-													<th>Sync state</th>
-													<th>Last synced</th>
-													<th>Last error</th>
-													<th>Actions</th>
+													<th><?php esc_html_e( 'Post', 'wp-git-sync' ); ?></th>
+													<th><?php esc_html_e( 'Sync state', 'wp-git-sync' ); ?></th>
+													<th><?php esc_html_e( 'Last synced', 'wp-git-sync' ); ?></th>
+													<th><?php esc_html_e( 'Last error', 'wp-git-sync' ); ?></th>
+													<th><?php esc_html_e( 'Actions', 'wp-git-sync' ); ?></th>
 												</tr>
 											</thead>
 											<tbody>
@@ -178,22 +178,22 @@ final class WPGS_Admin_Page_Main {
 														</td>
 														<td class="wpgs-row-state">
 															<?php if ( ! empty( $row['last_error'] ) ) : ?>
-																<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>
+																<span class="wpgs-pill wpgs-row-state-pill is-error"><?php esc_html_e( 'Error', 'wp-git-sync' ); ?></span>
 															<?php else : ?>
-																<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>
+																<span class="wpgs-pill wpgs-row-state-pill is-synced"><?php esc_html_e( 'Synced', 'wp-git-sync' ); ?></span>
 															<?php endif; ?>
 														</td>
 														<td class="wpgs-row-last-synced"><?php echo '' !== (string) $row['last_synced_at'] ? esc_html( (string) $row['last_synced_at'] ) : '—'; ?></td>
 														<td class="wpgs-row-last-error"><?php echo '' !== (string) $row['last_error'] ? esc_html( (string) $row['last_error'] ) : '—'; ?></td>
 														<td class="wpgs-row-actions">
-															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>">Export</button>
-															<a class="button button-small" href="<?php echo esc_url( WPGS_Admin::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $row['id'] ] ) ); ?>">Diff</a>
+															<button type="button" class="button button-small wpgs-sync-post-btn" data-post-id="<?php echo (int) $row['id']; ?>"><?php esc_html_e( 'Export', 'wp-git-sync' ); ?></button>
+															<a class="button button-small" href="<?php echo esc_url( WPGS_Admin::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $row['id'] ] ) ); ?>"><?php esc_html_e( 'Diff', 'wp-git-sync' ); ?></a>
 														</td>
 													</tr>
 												<?php endforeach; ?>
 											</tbody>
 										</table>
-										<p class="description wpgs-only-errors-empty" hidden>No posts with sync errors for this post type.</p>
+										<p class="description wpgs-only-errors-empty" hidden><?php esc_html_e( 'No posts with sync errors for this post type.', 'wp-git-sync' ); ?></p>
 									<?php endif; ?>
 								</section>
 							<?php endforeach; ?>
@@ -237,14 +237,14 @@ final class WPGS_Admin_Page_Main {
 		$reset = max( 0, (int) ( $rate_limit['reset'] ?? 0 ) );
 
 		if ( $limit < 1 ) {
-			return 'GitHub rate limit: no data yet. Start an export to fetch current usage.';
+			return __( 'GitHub rate limit: no data yet. Start an export to fetch current usage.', 'wp-git-sync' );
 		}
 
 		$parts = [
-			sprintf( 'GitHub rate limit: used %d / %d, remaining %d', $used, $limit, $remaining ),
+			sprintf( __( 'GitHub rate limit: used %1$d / %2$d, remaining %3$d', 'wp-git-sync' ), $used, $limit, $remaining ),
 		];
 		if ( $reset > 0 ) {
-			$parts[] = 'resets at ' . gmdate( 'Y-m-d H:i:s', $reset ) . ' UTC';
+			$parts[] = sprintf( __( 'resets at %1$s UTC', 'wp-git-sync' ), gmdate( 'Y-m-d H:i:s', $reset ) );
 		}
 		return implode( ' | ', $parts );
 	}

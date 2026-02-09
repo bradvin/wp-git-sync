@@ -7,6 +7,7 @@
 	var config = window.wpgsOverviewConfig || {};
 	var ajaxUrl = config.ajaxUrl || '';
 	var nonce = config.nonce || '';
+	var i18n = (config && config.i18n) ? config.i18n : {};
 	if (!ajaxUrl || !nonce) {
 		return;
 	}
@@ -33,9 +34,13 @@
 	var isPaused = false;
 	var isStopping = false;
 	var stopRequested = false;
-	var currentScopeLabel = 'All post types';
+	var currentScopeLabel = t('allPostTypes');
 	var pendingResumeData = null;
 	var latestProgressData = null;
+
+	function t(key) {
+		return (Object.prototype.hasOwnProperty.call(i18n, key) && i18n[key]) ? String(i18n[key]) : String(key || '');
+	}
 
 	function toBody(action, postType, onlyErrors) {
 		var body = new URLSearchParams();
@@ -137,15 +142,15 @@
 
 	function formatRateLimitSummary(rate) {
 		if (!rate || rate.limit < 1) {
-			return 'GitHub rate limit: no data yet. Start an export to fetch current usage.';
+			return t('rateLimitNoData');
 		}
-		var parts = ['GitHub rate limit: used ' + rate.used + ' / ' + rate.limit + ', remaining ' + rate.remaining];
+		var parts = [t('rateLimitPrefix') + ' ' + rate.used + ' / ' + rate.limit + ', ' + t('remainingLabel') + ' ' + rate.remaining];
 		if (rate.reset > 0) {
 			var resetDate = new Date(rate.reset * 1000);
-			parts.push('resets at ' + resetDate.toUTCString());
+			parts.push(t('resetsAtLabel') + ' ' + resetDate.toUTCString());
 		}
 		if (rate.resource) {
-			parts.push('resource: ' + rate.resource);
+			parts.push(t('resourceLabel') + ': ' + rate.resource);
 		}
 		return parts.join(' | ');
 	}
@@ -189,7 +194,7 @@
 				panel.setAttribute('data-only-errors', '0');
 				onlyErrorsBtn.classList.remove('is-active');
 				onlyErrorsBtn.setAttribute('aria-pressed', 'false');
-				onlyErrorsBtn.textContent = 'Only Show Errors';
+					onlyErrorsBtn.textContent = t('onlyShowErrors');
 			}
 		}
 	}
@@ -260,11 +265,11 @@
 			bar.setAttribute('aria-valuenow', String(pct));
 		}
 
-		var base = currentScopeLabel + ' export: ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
+		var base = currentScopeLabel + ' ' + t('exportProgressPrefix') + ' ' + data.processed + '/' + data.total + ' steps (' + pct + '%). ';
 		if (data.last_step && data.last_step.message) {
 			base += data.last_step.message + ' ';
 		}
-		base += 'Succeeded: ' + data.succeeded + '. Failed: ' + data.failed + '.';
+		base += t('succeededLabel') + ' ' + data.succeeded + '. ' + t('failedLabel') + ' ' + data.failed + '.';
 		progressText.textContent = base;
 	}
 
@@ -281,10 +286,10 @@
 		var hasSyncedField = state && Object.prototype.hasOwnProperty.call(state, 'last_synced_at');
 		var hasErrorField = state && Object.prototype.hasOwnProperty.call(state, 'last_error');
 
-		if (stateCell) {
-			stateCell.innerHTML = hasError
-				? '<span class="wpgs-pill wpgs-row-state-pill is-error">Error</span>'
-				: '<span class="wpgs-pill wpgs-row-state-pill is-synced">Synced</span>';
+			if (stateCell) {
+				stateCell.innerHTML = hasError
+					? '<span class="wpgs-pill wpgs-row-state-pill is-error">' + t('rowStateError') + '</span>'
+					: '<span class="wpgs-pill wpgs-row-state-pill is-synced">' + t('rowStateSynced') + '</span>';
 		}
 		if (syncedCell && hasSyncedField) {
 			syncedCell.textContent = state && state.last_synced_at ? String(state.last_synced_at) : '—';
@@ -302,7 +307,7 @@
 		pendingResumeData = null;
 		latestProgressData = data || latestProgressData;
 		setExportButtonsEnabled(true);
-		btn.textContent = 'Export All Posts';
+		btn.textContent = t('exportAllButton');
 		refreshControlButtons();
 		renderProgress(data);
 	}
@@ -313,7 +318,7 @@
 		isPaused = false;
 		pendingResumeData = null;
 		setExportButtonsEnabled(false);
-		btn.textContent = 'Exporting...';
+		btn.textContent = t('exportingButton');
 		progressWrap.hidden = false;
 		refreshControlButtons();
 		renderProgress(data);
@@ -325,7 +330,7 @@
 		isPaused = true;
 		pendingResumeData = data || latestProgressData || {};
 		latestProgressData = pendingResumeData;
-		btn.textContent = 'Export Paused';
+		btn.textContent = t('exportPausedButton');
 		renderProgress(pendingResumeData);
 		refreshControlButtons();
 	}
@@ -337,7 +342,7 @@
 		request('wpgs_export_batch_step')
 			.then(function (res) {
 				if (!res.success) {
-					throw new Error((res.data && res.data.message) ? res.data.message : 'Batch step failed.');
+					throw new Error((res.data && res.data.message) ? res.data.message : t('batchStepFailed'));
 				}
 				if (stopRequested) {
 					return;
@@ -367,9 +372,9 @@
 				isPaused = false;
 				pendingResumeData = null;
 				setExportButtonsEnabled(true);
-				btn.textContent = 'Export All Posts';
+					btn.textContent = t('exportAllButton');
 				refreshControlButtons();
-				progressText.textContent = 'Batch failed: ' + (err && err.message ? err.message : 'Unknown error');
+					progressText.textContent = t('batchFailedPrefix') + (err && err.message ? err.message : t('unknownError'));
 			});
 	}
 
@@ -379,21 +384,21 @@
 		}
 		progressWrap.hidden = false;
 		progressFill.style.width = '0%';
-		progressText.textContent = 'Starting export batch...';
-		currentScopeLabel = scopeLabel || 'All post types';
+		progressText.textContent = t('startingBatch');
+		currentScopeLabel = scopeLabel || t('allPostTypes');
 		pendingResumeData = null;
 		latestProgressData = null;
 		stopRequested = false;
 		isRunning = true;
 		isPaused = false;
 		setExportButtonsEnabled(false);
-		btn.textContent = 'Exporting...';
+		btn.textContent = t('exportingButton');
 		refreshControlButtons();
 
 		request('wpgs_export_batch_start', postType, !!onlyErrors)
 			.then(function (res) {
 				if (!res.success) {
-					throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to start batch.');
+					throw new Error((res.data && res.data.message) ? res.data.message : t('unableStartBatch'));
 				}
 				var data = res.data || {};
 				if (Object.prototype.hasOwnProperty.call(data, 'rate_limit')) {
@@ -405,9 +410,9 @@
 				isRunning = false;
 				isPaused = false;
 				setExportButtonsEnabled(true);
-				btn.textContent = 'Export All Posts';
+					btn.textContent = t('exportAllButton');
 				refreshControlButtons();
-				progressText.textContent = 'Unable to start batch: ' + (err && err.message ? err.message : 'Unknown error');
+					progressText.textContent = t('unableToStartBatchPrefix') + (err && err.message ? err.message : t('unknownError'));
 			});
 	}
 
@@ -423,23 +428,23 @@
 		request('wpgs_export_batch_stop')
 			.then(function (res) {
 				if (!res.success) {
-					throw new Error((res.data && res.data.message) ? res.data.message : 'Unable to stop export.');
+					throw new Error((res.data && res.data.message) ? res.data.message : t('unableStopExport'));
 				}
 				var data = res.data || {};
 				pendingResumeData = null;
 				latestProgressData = null;
-				btn.textContent = 'Export All Posts';
+					btn.textContent = t('exportAllButton');
 				setExportButtonsEnabled(true);
 				refreshControlButtons();
 				progressWrap.hidden = false;
 				progressFill.style.width = '0%';
 				progressText.textContent = (data.last_step && data.last_step.message)
 					? data.last_step.message
-					: 'Export stopped.';
+						: t('exportStopped');
 			})
 			.catch(function (err) {
 				setExportButtonsEnabled(false);
-				progressText.textContent = 'Unable to stop export: ' + (err && err.message ? err.message : 'Unknown error');
+					progressText.textContent = t('unableToStopBatchPrefix') + (err && err.message ? err.message : t('unknownError'));
 			})
 			.finally(function () {
 				isStopping = false;
@@ -447,13 +452,13 @@
 	}
 
 	btn.addEventListener('click', function () {
-		startBatch('', 'All post types', false);
+		startBatch('', t('allPostTypes'), false);
 	});
 
-	for (var t = 0; t < typeButtons.length; t++) {
-		typeButtons[t].addEventListener('click', function () {
+	for (var typeIdx = 0; typeIdx < typeButtons.length; typeIdx++) {
+		typeButtons[typeIdx].addEventListener('click', function () {
 			var postType = this.getAttribute('data-post-type') || '';
-			var label = this.textContent ? this.textContent.replace(/^Export all\s+/i, '') : postType;
+			var label = this.getAttribute('data-post-label') || postType;
 			startBatch(postType, label, false);
 		});
 	}
@@ -462,7 +467,7 @@
 		retryErrorButtons[r].addEventListener('click', function () {
 			var postType = this.getAttribute('data-post-type') || '';
 			var label = this.getAttribute('data-post-label') || postType;
-			startBatch(postType, label + ' errors', true);
+			startBatch(postType, label + ' ' + t('errorsSuffix'), true);
 		});
 	}
 
@@ -477,7 +482,7 @@
 			panel.setAttribute('data-only-errors', nextOnlyErrors ? '1' : '0');
 			this.setAttribute('aria-pressed', nextOnlyErrors ? 'true' : 'false');
 			this.classList.toggle('is-active', nextOnlyErrors);
-			this.textContent = nextOnlyErrors ? 'Show All' : 'Only Show Errors';
+			this.textContent = nextOnlyErrors ? t('showAll') : t('onlyShowErrors');
 			applyOnlyErrorsFilter(panel);
 		});
 	}
@@ -494,12 +499,12 @@
 			}
 			var prevText = self.textContent;
 			self.disabled = true;
-			self.textContent = 'Exporting...';
+			self.textContent = t('exportingPostButton');
 
 			requestPostSync(postId)
 				.then(function (res) {
 					if (!res.success) {
-						var err = new Error((res.data && res.data.message) ? res.data.message : 'Failed syncing post.');
+							var err = new Error((res.data && res.data.message) ? res.data.message : t('failedSyncingPost'));
 						err.state = (res.data && res.data.state) ? res.data.state : null;
 						throw err;
 					}
@@ -512,7 +517,7 @@
 						state = {};
 					}
 					if (!Object.prototype.hasOwnProperty.call(state, 'last_error')) {
-						state.last_error = err && err.message ? err.message : 'Unknown error';
+							state.last_error = err && err.message ? err.message : t('unknownError');
 					}
 					setRowSyncState(postId, state);
 				})
@@ -588,13 +593,13 @@
 			progressWrap.hidden = false;
 			renderProgress(data);
 			if (data.paused) {
-				progressText.textContent += ' Wait a few minutes, then click Resume Export.';
-				isPaused = true;
-				isRunning = false;
-				btn.textContent = 'Export Paused';
-			} else {
-				progressText.textContent += ' Click Resume Export to continue.';
-			}
+					progressText.textContent += ' ' + t('waitThenResumeHint');
+					isPaused = true;
+					isRunning = false;
+					btn.textContent = t('exportPausedButton');
+				} else {
+					progressText.textContent += ' ' + t('clickResumeHint');
+				}
 			refreshControlButtons();
 			setExportButtonsEnabled(false);
 		})

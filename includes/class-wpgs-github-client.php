@@ -38,7 +38,7 @@ final class WPGS_GitHub_Client {
 	public function __construct( string $token ) {
 		$this->token = trim( $token );
 		if ( '' === $this->token ) {
-			throw new InvalidArgumentException( 'GitHub token is missing.' );
+			throw new InvalidArgumentException( __( 'GitHub token is missing.', 'wp-git-sync' ) );
 		}
 	}
 
@@ -74,7 +74,7 @@ final class WPGS_GitHub_Client {
 		if ( is_wp_error( $res ) ) {
 			throw new RuntimeException(
 				sprintf(
-					'GitHub API transport failed during %s %s: %s',
+					__( 'GitHub API transport failed during %1$s %2$s: %3$s', 'wp-git-sync' ),
 					esc_html( $method ),
 					esc_html( $endpoint ),
 					esc_html( $res->get_error_message() )
@@ -95,7 +95,7 @@ final class WPGS_GitHub_Client {
 		}
 
 		if ( $code < 200 || $code >= 300 ) {
-			$message = isset( $data['message'] ) ? (string) $data['message'] : 'GitHub API error.';
+			$message = isset( $data['message'] ) ? (string) $data['message'] : __( 'GitHub API error.', 'wp-git-sync' );
 			$detail = '';
 			if ( isset( $data['errors'] ) && is_array( $data['errors'] ) ) {
 				$error_parts = [];
@@ -126,7 +126,7 @@ final class WPGS_GitHub_Client {
 
 			throw new RuntimeException(
 				sprintf(
-					'GitHub API request failed (%s) during %s %s: %s%s',
+					__( 'GitHub API request failed (%1$s) during %2$s %3$s: %4$s%5$s', 'wp-git-sync' ),
 					esc_html( (string) $code ),
 					esc_html( $method ),
 					esc_html( $endpoint ),

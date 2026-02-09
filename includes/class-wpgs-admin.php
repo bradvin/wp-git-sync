@@ -53,8 +53,8 @@ final class WPGS_Admin {
 	 */
 	public static function admin_menu(): void {
 		add_management_page(
-			'WP Git Sync',
-			'WP Git Sync',
+			__( 'WP Git Sync', 'wp-git-sync' ),
+			__( 'WP Git Sync', 'wp-git-sync' ),
 			'manage_options',
 			'wpgs',
 			[ __CLASS__, 'render_tools_page' ]
@@ -96,6 +96,39 @@ final class WPGS_Admin {
 					'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 					'nonce'            => wp_create_nonce( 'wpgs_export_batch' ),
 					'initialRateLimit' => self::current_rate_limit_state(),
+					'i18n'             => [
+						'exportAllButton'              => __( 'Export All Posts', 'wp-git-sync' ),
+						'exportingButton'              => __( 'Exporting...', 'wp-git-sync' ),
+						'exportPausedButton'           => __( 'Export Paused', 'wp-git-sync' ),
+						'startingBatch'                => __( 'Starting export batch...', 'wp-git-sync' ),
+						'batchFailedPrefix'            => __( 'Batch failed: ', 'wp-git-sync' ),
+						'unableToStartBatchPrefix'     => __( 'Unable to start batch: ', 'wp-git-sync' ),
+						'unableToStopBatchPrefix'      => __( 'Unable to stop export: ', 'wp-git-sync' ),
+						'exportStopped'                => __( 'Export stopped.', 'wp-git-sync' ),
+						'onlyShowErrors'               => __( 'Only Show Errors', 'wp-git-sync' ),
+						'showAll'                      => __( 'Show All', 'wp-git-sync' ),
+						'noErrorsForType'              => __( 'No posts with sync errors for this post type.', 'wp-git-sync' ),
+						'exportingPostButton'          => __( 'Exporting...', 'wp-git-sync' ),
+						'failedSyncingPost'            => __( 'Failed syncing post.', 'wp-git-sync' ),
+						'unknownError'                 => __( 'Unknown error', 'wp-git-sync' ),
+						'rateLimitNoData'              => __( 'GitHub rate limit: no data yet. Start an export to fetch current usage.', 'wp-git-sync' ),
+						'rateLimitPrefix'              => __( 'GitHub rate limit: used', 'wp-git-sync' ),
+						'remainingLabel'               => __( 'remaining', 'wp-git-sync' ),
+						'resetsAtLabel'                => __( 'resets at', 'wp-git-sync' ),
+						'resourceLabel'                => __( 'resource', 'wp-git-sync' ),
+						'exportProgressPrefix'         => __( 'export:', 'wp-git-sync' ),
+						'succeededLabel'               => __( 'Succeeded:', 'wp-git-sync' ),
+						'failedLabel'                  => __( 'Failed:', 'wp-git-sync' ),
+						'waitThenResumeHint'           => __( 'Wait a few minutes, then click Resume Export.', 'wp-git-sync' ),
+						'clickResumeHint'              => __( 'Click Resume Export to continue.', 'wp-git-sync' ),
+						'batchStepFailed'              => __( 'Batch step failed.', 'wp-git-sync' ),
+						'unableStartBatch'             => __( 'Unable to start batch.', 'wp-git-sync' ),
+						'unableStopExport'             => __( 'Unable to stop export.', 'wp-git-sync' ),
+						'allPostTypes'                 => __( 'All post types', 'wp-git-sync' ),
+						'errorsSuffix'                 => __( 'errors', 'wp-git-sync' ),
+						'rowStateError'                => __( 'Error', 'wp-git-sync' ),
+						'rowStateSynced'               => __( 'Synced', 'wp-git-sync' ),
+					],
 				]
 			);
 			return;
@@ -147,7 +180,7 @@ final class WPGS_Admin {
 
 		if ( $had_repo_url && ( '' === (string) $settings['github_owner'] || '' === (string) $settings['github_repo'] ) ) {
 			echo '<div class="notice notice-warning"><p>';
-			echo esc_html( 'WP Git Sync: Settings were migrated from the legacy git-shell adapter. Please confirm GitHub owner/repo + auth settings.' );
+			echo esc_html( __( 'WP Git Sync: Settings were migrated from the legacy git-shell adapter. Please confirm GitHub owner/repo + auth settings.', 'wp-git-sync' ) );
 			echo '</p></div>';
 		}
 	}
@@ -215,10 +248,10 @@ final class WPGS_Admin {
 		$diff_url = self::tools_page_url( $diff_args );
 		$settings_url = self::tools_page_url( [ 'tab' => 'settings' ] );
 		?>
-		<nav class="nav-tab-wrapper" aria-label="WP Git Sync">
-			<a href="<?php echo esc_url( $overview_url ); ?>" class="nav-tab <?php echo 'overview' === $active_tab ? 'nav-tab-active' : ''; ?>">Overview</a>
-			<a href="<?php echo esc_url( $diff_url ); ?>" class="nav-tab <?php echo 'diff' === $active_tab ? 'nav-tab-active' : ''; ?>">Diff</a>
-			<a href="<?php echo esc_url( $settings_url ); ?>" class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">Settings</a>
+		<nav class="nav-tab-wrapper" aria-label="<?php echo esc_attr__( 'WP Git Sync', 'wp-git-sync' ); ?>">
+			<a href="<?php echo esc_url( $overview_url ); ?>" class="nav-tab <?php echo 'overview' === $active_tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Overview', 'wp-git-sync' ); ?></a>
+			<a href="<?php echo esc_url( $diff_url ); ?>" class="nav-tab <?php echo 'diff' === $active_tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Diff', 'wp-git-sync' ); ?></a>
+			<a href="<?php echo esc_url( $settings_url ); ?>" class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Settings', 'wp-git-sync' ); ?></a>
 		</nav>
 		<?php
 	}
@@ -393,7 +426,7 @@ final class WPGS_Admin {
 			}
 			return (string) $post_types[0];
 		}
-		return 'All post types';
+		return __( 'All post types', 'wp-git-sync' );
 	}
 
 	/**
@@ -445,7 +478,7 @@ final class WPGS_Admin {
 				}
 
 				$title = get_the_title( $id );
-				$title = '' !== trim( (string) $title ) ? (string) $title : '(no title)';
+				$title = '' !== trim( (string) $title ) ? (string) $title : __( '(no title)', 'wp-git-sync' );
 				$rows[] = [
 					'id'             => $id,
 					'title'          => $title,
@@ -480,14 +513,14 @@ final class WPGS_Admin {
 		$owner = trim( (string) ( $settings['github_owner'] ?? '' ) );
 		$repo  = trim( (string) ( $settings['github_repo'] ?? '' ) );
 		if ( '' === $owner || '' === $repo ) {
-			throw new RuntimeException( 'GitHub owner/repo not configured.' );
+			throw new RuntimeException( __( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
 		}
 		// Validate token is available before queueing work.
 		WPGS_Auth::get_token( $settings );
 
 		$included_post_types = self::included_post_types();
 		if ( empty( $included_post_types ) ) {
-			throw new RuntimeException( 'No included post types configured. Update settings first.' );
+			throw new RuntimeException( __( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
 		}
 
 		$post_types = empty( $post_types ) ? $included_post_types : array_values( array_unique( array_map( 'sanitize_key', array_map( 'strval', $post_types ) ) ) );
@@ -499,7 +532,7 @@ final class WPGS_Admin {
 			)
 		);
 		if ( empty( $post_types ) ) {
-			throw new RuntimeException( 'No included post types configured. Update settings first.' );
+			throw new RuntimeException( __( 'No included post types configured. Update settings first.', 'wp-git-sync' ) );
 		}
 		$post_ids = self::collect_export_post_ids( $post_types, $only_errors );
 		$total_posts = count( $post_ids );
@@ -526,7 +559,7 @@ final class WPGS_Admin {
 			'last_step'       => [
 				'type'    => 'start',
 				'ok'      => true,
-				'message' => $only_errors ? 'Error-only batch queued.' : 'Batch queued.',
+				'message' => $only_errors ? __( 'Error-only batch queued.', 'wp-git-sync' ) : __( 'Batch queued.', 'wp-git-sync' ),
 			],
 			'started_at'      => gmdate( 'c' ),
 			'updated_at'      => gmdate( 'c' ),
@@ -563,7 +596,7 @@ final class WPGS_Admin {
 	 * @return string
 	 */
 	private static function github_rate_limit_pause_message(): string {
-		return 'GitHub API rate limit reached. Export paused automatically. Please wait a few minutes, then click Resume Export.';
+		return __( 'GitHub API rate limit reached. Export paused automatically. Please wait a few minutes, then click Resume Export.', 'wp-git-sync' );
 	}
 
 	/**
@@ -594,7 +627,7 @@ final class WPGS_Admin {
 		}
 
 		return [
-			'scope_label' => (string) ( $batch['scope_label'] ?? 'All post types' ),
+			'scope_label' => (string) ( $batch['scope_label'] ?? __( 'All post types', 'wp-git-sync' ) ),
 			'done'      => $done,
 			'paused'    => ! empty( $batch['paused'] ),
 			'processed' => $processed_posts,
@@ -619,7 +652,7 @@ final class WPGS_Admin {
 		$key = self::export_batch_transient_key();
 		$batch = get_transient( $key );
 		if ( ! is_array( $batch ) ) {
-			throw new RuntimeException( 'No active export batch. Start a new export first.' );
+			throw new RuntimeException( __( 'No active export batch. Start a new export first.', 'wp-git-sync' ) );
 		}
 
 		$batch['paused'] = false;
@@ -643,7 +676,7 @@ final class WPGS_Admin {
 				$last_step = [
 					'type'    => 'post',
 					'ok'      => true,
-					'message' => sprintf( 'Exported post #%d', $post_id ),
+					'message' => sprintf( __( 'Exported post #%d', 'wp-git-sync' ), $post_id ),
 					'post_id' => $post_id,
 				];
 				$count_step = true;
@@ -673,7 +706,7 @@ final class WPGS_Admin {
 					$last_step = [
 						'type'    => 'post',
 						'ok'      => false,
-						'message' => sprintf( 'Failed exporting post #%d: %s', $post_id, $error_message ),
+						'message' => sprintf( __( 'Failed exporting post #%1$d: %2$s', 'wp-git-sync' ), $post_id, $error_message ),
 						'post_id' => $post_id,
 					];
 					$count_step = true;
@@ -689,7 +722,7 @@ final class WPGS_Admin {
 				$last_step = [
 					'type'    => 'finalize',
 					'ok'      => true,
-					'message' => 'Finalized export batch cleanup.',
+					'message' => __( 'Finalized export batch cleanup.', 'wp-git-sync' ),
 				];
 				$batch['finalized'] = true;
 				$count_step = true;
@@ -715,7 +748,7 @@ final class WPGS_Admin {
 					$last_step = [
 						'type'    => 'finalize',
 						'ok'      => false,
-						'message' => 'Finalize step failed: ' . $error_message,
+						'message' => sprintf( __( 'Finalize step failed: %s', 'wp-git-sync' ), $error_message ),
 					];
 					$batch['finalized'] = true;
 					$count_step = true;
@@ -759,7 +792,7 @@ final class WPGS_Admin {
 	 */
 	public static function render_tools_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$tab = self::current_tab();
@@ -811,7 +844,7 @@ final class WPGS_Admin {
 	 */
 	public static function render_settings_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$settings = WPGS_Settings::get();
@@ -883,7 +916,7 @@ final class WPGS_Admin {
 	 */
 	public static function ajax_export_batch_start(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+			wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'wp-git-sync' ) ], 403 );
 		}
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
@@ -894,7 +927,7 @@ final class WPGS_Admin {
 			if ( '' !== $post_type ) {
 				$allowed = self::included_post_types();
 				if ( ! in_array( $post_type, $allowed, true ) ) {
-					wp_send_json_error( [ 'message' => 'Invalid post type selected for export.' ], 400 );
+					wp_send_json_error( [ 'message' => __( 'Invalid post type selected for export.', 'wp-git-sync' ) ], 400 );
 				}
 				$post_types = [ $post_type ];
 			}
@@ -905,7 +938,7 @@ final class WPGS_Admin {
 				[
 					'type'    => 'start',
 					'ok'      => true,
-					'message' => $only_errors ? 'Error-only batch queued.' : 'Batch queued.',
+					'message' => $only_errors ? __( 'Error-only batch queued.', 'wp-git-sync' ) : __( 'Batch queued.', 'wp-git-sync' ),
 				],
 				false
 			);
@@ -923,7 +956,7 @@ final class WPGS_Admin {
 	 */
 	public static function ajax_export_batch_status(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+			wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'wp-git-sync' ) ], 403 );
 		}
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
@@ -958,7 +991,7 @@ final class WPGS_Admin {
 	 */
 	public static function ajax_export_batch_step(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+			wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'wp-git-sync' ) ], 403 );
 		}
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
@@ -976,7 +1009,7 @@ final class WPGS_Admin {
 	 */
 	public static function ajax_export_batch_stop(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+			wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'wp-git-sync' ) ], 403 );
 		}
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
@@ -992,7 +1025,7 @@ final class WPGS_Admin {
 				'last_step' => [
 					'type'    => 'stop',
 					'ok'      => true,
-					'message' => $had_batch ? 'Export batch stopped.' : 'No active export batch to stop.',
+					'message' => $had_batch ? __( 'Export batch stopped.', 'wp-git-sync' ) : __( 'No active export batch to stop.', 'wp-git-sync' ),
 				],
 			]
 		);
@@ -1005,19 +1038,19 @@ final class WPGS_Admin {
 	 */
 	public static function ajax_export_post(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( [ 'message' => 'Insufficient permissions.' ], 403 );
+			wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'wp-git-sync' ) ], 403 );
 		}
 		check_ajax_referer( 'wpgs_export_batch', 'nonce' );
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
 		$post = $post_id > 0 ? get_post( $post_id ) : null;
 		if ( ! $post ) {
-			wp_send_json_error( [ 'message' => 'Invalid post.' ], 400 );
+			wp_send_json_error( [ 'message' => __( 'Invalid post.', 'wp-git-sync' ) ], 400 );
 		}
 
 		$included = self::included_post_types();
 		if ( ! in_array( (string) $post->post_type, $included, true ) ) {
-			wp_send_json_error( [ 'message' => 'Post type is not included in sync settings.' ], 400 );
+			wp_send_json_error( [ 'message' => __( 'Post type is not included in sync settings.', 'wp-git-sync' ) ], 400 );
 		}
 
 		$exporter = new WPGS_Exporter( WPGS_Settings::get() );
@@ -1027,7 +1060,7 @@ final class WPGS_Admin {
 			wp_send_json_success(
 				[
 					'post_id' => $post_id,
-					'message' => sprintf( 'Exported post #%d', $post_id ),
+					'message' => sprintf( __( 'Exported post #%d', 'wp-git-sync' ), $post_id ),
 					'state'   => [
 						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
 						'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
@@ -1041,7 +1074,7 @@ final class WPGS_Admin {
 			wp_send_json_error(
 				[
 					'post_id' => $post_id,
-					'message' => sprintf( 'Failed syncing post #%d: %s', $post_id, (string) $e->getMessage() ),
+					'message' => sprintf( __( 'Failed syncing post #%1$d: %2$s', 'wp-git-sync' ), $post_id, (string) $e->getMessage() ),
 					'state'   => [
 						'synced'         => WPGS_Sync_Meta::is_synced( $post_id ),
 						'last_synced_at' => (string) ( $state['last_synced_at'] ?? '' ),
@@ -1060,7 +1093,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_export_all(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 		check_admin_referer( 'wpgs_export_all' );
 
@@ -1080,7 +1113,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_setup_repo(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 		check_admin_referer( 'wpgs_setup_repo' );
 
@@ -1092,12 +1125,12 @@ final class WPGS_Admin {
 		$token  = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
-			wp_die( 'GitHub owner/repo not configured.' );
+			wp_die( esc_html__( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
 		}
 
 		$provider = new WPGS_GitHub_Provider( new WPGS_GitHub_Client( $token ), $owner . '/' . $repo );
 		try {
-			$provider->reset_branch_to_empty( $branch, 'Setup repository for WP Git Sync' );
+			$provider->reset_branch_to_empty( $branch, __( 'Setup repository for WP Git Sync', 'wp-git-sync' ) );
 			wp_safe_redirect( self::tools_page_url( [ 'wpgs' => 'repo_setup' ] ) );
 			exit;
 		} catch ( Throwable $e ) {
@@ -1113,7 +1146,7 @@ final class WPGS_Admin {
 	public static function handle_export_post(): void {
 		// Export is an admin-only operation.
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -1144,7 +1177,7 @@ final class WPGS_Admin {
 		$token    = WPGS_Auth::get_token( $settings );
 
 		if ( '' === $owner || '' === $repo ) {
-			throw new RuntimeException( 'GitHub owner/repo not configured.' );
+			throw new RuntimeException( __( 'GitHub owner/repo not configured.', 'wp-git-sync' ) );
 		}
 
 		return [
@@ -1174,7 +1207,7 @@ final class WPGS_Admin {
 			$remote_post    = $provider->get_file_contents( $branch, $paths['post_path'] );
 			$remote_meta    = $provider->get_file_contents( $branch, $paths['meta_path'] );
 		} catch ( Throwable $e ) {
-			throw new RuntimeException( 'Unable to fetch remote files for diff: ' . esc_html( $e->getMessage() ) );
+			throw new RuntimeException( sprintf( __( 'Unable to fetch remote files for diff: %s', 'wp-git-sync' ), esc_html( $e->getMessage() ) ) );
 		}
 
 		$remote_content_n = WPGS_Diff::normalize_newlines( (string) $remote_content );
@@ -1193,8 +1226,8 @@ final class WPGS_Admin {
 			$local_content_n,
 			[
 				'show_split_view' => true,
-				'title_left'      => 'Remote',
-				'title_right'     => 'Local',
+				'title_left'      => __( 'Remote', 'wp-git-sync' ),
+				'title_right'     => __( 'Local', 'wp-git-sync' ),
 			]
 		) : '';
 		$post_diff    = $post_changed ? wp_text_diff(
@@ -1202,8 +1235,8 @@ final class WPGS_Admin {
 			$local_post_n,
 			[
 				'show_split_view' => true,
-				'title_left'      => 'Remote',
-				'title_right'     => 'Local',
+				'title_left'      => __( 'Remote', 'wp-git-sync' ),
+				'title_right'     => __( 'Local', 'wp-git-sync' ),
 			]
 		) : '';
 		$meta_diff    = $meta_changed ? wp_text_diff(
@@ -1211,8 +1244,8 @@ final class WPGS_Admin {
 			$local_meta_n,
 			[
 				'show_split_view' => true,
-				'title_left'      => 'Remote',
-				'title_right'     => 'Local',
+				'title_left'      => __( 'Remote', 'wp-git-sync' ),
+				'title_right'     => __( 'Local', 'wp-git-sync' ),
 			]
 		) : '';
 
@@ -1249,7 +1282,7 @@ final class WPGS_Admin {
 	private static function decode_json_array_payload( string $json, string $label ): array {
 		$decoded = json_decode( $json, true );
 		if ( ! is_array( $decoded ) ) {
-			throw new RuntimeException( sprintf( 'Unable to decode remote %s JSON.', esc_html( $label ) ) );
+			throw new RuntimeException( sprintf( __( 'Unable to decode remote %s JSON.', 'wp-git-sync' ), esc_html( $label ) ) );
 		}
 		return $decoded;
 	}
@@ -1388,7 +1421,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_check_post(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -1396,7 +1429,7 @@ final class WPGS_Admin {
 
 		$post = get_post( $post_id );
 		if ( ! $post ) {
-			wp_die( 'Invalid post.' );
+			wp_die( esc_html__( 'Invalid post.', 'wp-git-sync' ) );
 		}
 
 		try {
@@ -1416,7 +1449,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_pull_post(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -1424,7 +1457,7 @@ final class WPGS_Admin {
 
 		$post = get_post( $post_id );
 		if ( ! $post ) {
-			wp_die( 'Invalid post.' );
+			wp_die( esc_html__( 'Invalid post.', 'wp-git-sync' ) );
 		}
 
 		try {
@@ -1451,7 +1484,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
-			wp_die( esc_html( 'Unable to import remote content: ' . $e->getMessage() ) );
+			wp_die( esc_html( sprintf( __( 'Unable to import remote content: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
 		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
@@ -1465,7 +1498,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_pull_post_data(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -1473,7 +1506,7 @@ final class WPGS_Admin {
 
 		$post = get_post( $post_id );
 		if ( ! $post ) {
-			wp_die( 'Invalid post.' );
+			wp_die( esc_html__( 'Invalid post.', 'wp-git-sync' ) );
 		}
 
 		try {
@@ -1483,7 +1516,7 @@ final class WPGS_Admin {
 			$paths    = WPGS_Diff::paths_for_post( $post );
 
 			$remote_post_json = $provider->get_file_contents( $branch, $paths['post_path'] );
-			$post_payload     = self::decode_json_array_payload( $remote_post_json, 'post data' );
+			$post_payload     = self::decode_json_array_payload( $remote_post_json, __( 'post data', 'wp-git-sync' ) );
 			self::apply_remote_post_data( $post_id, $post_payload );
 
 			$updated_post = get_post( $post_id );
@@ -1491,7 +1524,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
-			wp_die( esc_html( 'Unable to import remote post data: ' . $e->getMessage() ) );
+			wp_die( esc_html( sprintf( __( 'Unable to import remote post data: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
 		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
@@ -1505,7 +1538,7 @@ final class WPGS_Admin {
 	 */
 	public static function handle_pull_post_meta(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -1513,7 +1546,7 @@ final class WPGS_Admin {
 
 		$post = get_post( $post_id );
 		if ( ! $post ) {
-			wp_die( 'Invalid post.' );
+			wp_die( esc_html__( 'Invalid post.', 'wp-git-sync' ) );
 		}
 
 		try {
@@ -1523,7 +1556,7 @@ final class WPGS_Admin {
 			$paths    = WPGS_Diff::paths_for_post( $post );
 
 			$remote_meta_json = $provider->get_file_contents( $branch, $paths['meta_path'] );
-			$meta_payload     = self::decode_json_array_payload( $remote_meta_json, 'meta data' );
+			$meta_payload     = self::decode_json_array_payload( $remote_meta_json, __( 'meta data', 'wp-git-sync' ) );
 			self::apply_remote_post_meta( $post_id, $meta_payload );
 
 			$updated_post = get_post( $post_id );
@@ -1531,7 +1564,7 @@ final class WPGS_Admin {
 				self::run_diff_check_for_post( $updated_post );
 			}
 		} catch ( Throwable $e ) {
-			wp_die( esc_html( 'Unable to import remote meta data: ' . $e->getMessage() ) );
+			wp_die( esc_html( sprintf( __( 'Unable to import remote meta data: %s', 'wp-git-sync' ), $e->getMessage() ) ) );
 		}
 
 		wp_safe_redirect( self::tools_page_url( [ 'tab' => 'diff', 'post_id' => (int) $post_id ] ) );
@@ -1545,7 +1578,7 @@ final class WPGS_Admin {
 	 */
 	public static function render_diff_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Insufficient permissions.' );
+			wp_die( esc_html__( 'Insufficient permissions.', 'wp-git-sync' ) );
 		}
 
 		$post_id = self::get_query_int( 'post_id' );
@@ -1701,8 +1734,8 @@ final class WPGS_Admin {
 			}
 
 			if ( $code < 200 || $code >= 300 ) {
-				$message = isset( $data['message'] ) ? (string) $data['message'] : 'GitHub API error.';
-				return new WP_Error( 'wpgs_repo_fetch_failed', sprintf( 'GitHub API request failed (%d): %s', $code, $message ) );
+				$message = isset( $data['message'] ) ? (string) $data['message'] : __( 'GitHub API error.', 'wp-git-sync' );
+				return new WP_Error( 'wpgs_repo_fetch_failed', sprintf( __( 'GitHub API request failed (%1$d): %2$s', 'wp-git-sync' ), $code, $message ) );
 			}
 
 			$count = count( $data );
@@ -1799,7 +1832,7 @@ final class WPGS_Admin {
 	public static function register_metabox(): void {
 		$post_types = [ 'post', 'page' ];
 		foreach ( $post_types as $pt ) {
-			add_meta_box( 'wpgs_metabox', 'WP Git Sync', [ __CLASS__, 'render_metabox' ], $pt, 'side' );
+			add_meta_box( 'wpgs_metabox', __( 'WP Git Sync', 'wp-git-sync' ), [ __CLASS__, 'render_metabox' ], $pt, 'side' );
 		}
 	}
 

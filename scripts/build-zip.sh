@@ -3,13 +3,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_SLUG="$(basename "$ROOT_DIR")"
 PACKAGE_FILE="$ROOT_DIR/packages.json"
 
 if [ ! -f "$PACKAGE_FILE" ]; then
   echo "Missing $PACKAGE_FILE. Cannot determine plugin version for ZIP name." >&2
   exit 1
 fi
+
+PLUGIN_SLUG="$(php -r '
+$file = $argv[1];
+$json = json_decode(file_get_contents($file), true);
+if (!is_array($json) || empty($json["slug"]) || !is_string($json["slug"])) {
+    fwrite(STDERR, "packages.json is missing a valid slug string\n");
+    exit(1);
+}
+echo $json["slug"];
+' "$PACKAGE_FILE")"
 
 PLUGIN_VERSION="$(php -r '
 $file = $argv[1];

@@ -38,39 +38,39 @@ final class WPGS_Admin_Page_Diff {
 		$meta_status_class    = (string) ( $view['meta_status_class'] ?? 'is-neutral' );
 
 		if ( ! $post ) {
-			echo '<div class="wrap"><h1>WP Git Sync</h1>';
+			echo '<div class="wrap"><h1>' . esc_html__( 'WP Git Sync', 'wp-git-sync' ) . '</h1>';
 			WPGS_Admin::render_primary_tabs( 'diff' );
-			echo '<p>No post was selected for diff. Open the Overview tab, then click <strong>Diff</strong> on a post row.</p>';
-			echo '<p><a class="button" href="' . esc_url( $overview_url ) . '">Go to Overview</a></p></div>';
+			echo '<p>' . wp_kses_post( __( 'No post was selected for diff. Open the Overview tab, then click <strong>Diff</strong> on a post row.', 'wp-git-sync' ) ) . '</p>';
+			echo '<p><a class="button" href="' . esc_url( $overview_url ) . '">' . esc_html__( 'Go to Overview', 'wp-git-sync' ) . '</a></p></div>';
 			return;
 		}
 		?>
 		<div class="wrap wpgs-diff-wrap">
-			<h1>WP Git Sync</h1>
+			<h1><?php esc_html_e( 'WP Git Sync', 'wp-git-sync' ); ?></h1>
 			<?php WPGS_Admin::render_primary_tabs( 'diff', (int) $post_id ); ?>
 			<div class="wpgs-overview-grid">
 				<article class="wpgs-card wpgs-post-card">
 					<h2 class="wpgs-card-title"><?php echo esc_html( $post_card_title ); ?></h2>
 					<dl class="wpgs-detail-grid wpgs-post-sync-grid">
 						<div class="wpgs-detail-row">
-							<dt>Title</dt>
+							<dt><?php esc_html_e( 'Title', 'wp-git-sync' ); ?></dt>
 							<dd><?php echo esc_html( (string) $post->post_title ); ?></dd>
 						</div>
 						<div class="wpgs-detail-row">
-							<dt>ID</dt>
+							<dt><?php esc_html_e( 'ID', 'wp-git-sync' ); ?></dt>
 							<dd><code><?php echo (int) $post_id; ?></code></dd>
 						</div>
 						<?php if ( $has_sync_state ) : ?>
 							<div class="wpgs-detail-row">
-								<dt>Repo</dt>
+								<dt><?php esc_html_e( 'Repo', 'wp-git-sync' ); ?></dt>
 								<dd><code><?php echo esc_html( (string) ( $sync_state['repo'] ?? '' ) ); ?></code></dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Branch</dt>
+								<dt><?php esc_html_e( 'Branch', 'wp-git-sync' ); ?></dt>
 								<dd><code><?php echo esc_html( (string) ( $sync_state['branch'] ?? '' ) ); ?></code></dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Content path</dt>
+								<dt><?php esc_html_e( 'Content path', 'wp-git-sync' ); ?></dt>
 								<dd>
 									<?php if ( '' !== $content_file_url ) : ?>
 										<a href="<?php echo esc_url( $content_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['content_path'] ?? '' ) ); ?></code></a>
@@ -80,7 +80,7 @@ final class WPGS_Admin_Page_Diff {
 								</dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Post path</dt>
+								<dt><?php esc_html_e( 'Post path', 'wp-git-sync' ); ?></dt>
 								<dd>
 									<?php if ( '' !== $post_file_url ) : ?>
 										<a href="<?php echo esc_url( $post_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['post_path'] ?? '' ) ); ?></code></a>
@@ -90,7 +90,7 @@ final class WPGS_Admin_Page_Diff {
 								</dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Meta path</dt>
+								<dt><?php esc_html_e( 'Meta path', 'wp-git-sync' ); ?></dt>
 								<dd>
 									<?php if ( '' !== $meta_file_url ) : ?>
 										<a href="<?php echo esc_url( $meta_file_url ); ?>" target="_blank" rel="noopener noreferrer"><code><?php echo esc_html( (string) ( $sync_state['meta_path'] ?? '' ) ); ?></code></a>
@@ -103,14 +103,14 @@ final class WPGS_Admin_Page_Diff {
 					</dl>
 					<div class="wpgs-action-row wpgs-post-action-row">
 						<?php if ( $edit_link ) : ?>
-							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>">Edit post</a></p>
+							<p><a class="button" href="<?php echo esc_url( $edit_link ); ?>"><?php esc_html_e( 'Edit post', 'wp-git-sync' ); ?></a></p>
 						<?php endif; ?>
 						<?php if ( $has_sync_state ) : ?>
 							<form method="post" action="<?php echo esc_url( $action_url ); ?>">
 								<input type="hidden" name="action" value="wpgs_check_post" />
 								<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
 								<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_check_post_' . (int) $post_id ) ); ?>" />
-								<?php submit_button( 'Check For Changes', 'secondary', 'submit', false ); ?>
+								<?php submit_button( __( 'Check For Changes', 'wp-git-sync' ), 'secondary', 'submit', false ); ?>
 							</form>
 						<?php endif; ?>
 					</div>
@@ -118,58 +118,58 @@ final class WPGS_Admin_Page_Diff {
 			</div>
 
 			<?php if ( $has_diff ) : ?>
-				<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="WP Git Sync Diff Tabs">
-					<a id="wpgs-tab-check-link" href="#wpgs-tab-check" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-check" aria-controls="wpgs-tab-check" aria-selected="true">Check</a>
-					<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false">Content <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
-					<a id="wpgs-tab-post-link" href="#wpgs-tab-post" class="nav-tab" role="tab" data-tab="wpgs-tab-post" aria-controls="wpgs-tab-post" aria-selected="false">Post <span class="wpgs-tab-light <?php echo esc_attr( $post_status_class ); ?>" aria-hidden="true"></span></a>
-					<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false">Meta <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
+				<nav class="nav-tab-wrapper" id="wpgs-diff-tabs" role="tablist" aria-label="<?php echo esc_attr__( 'WP Git Sync Diff Tabs', 'wp-git-sync' ); ?>">
+					<a id="wpgs-tab-check-link" href="#wpgs-tab-check" class="nav-tab nav-tab-active" role="tab" data-tab="wpgs-tab-check" aria-controls="wpgs-tab-check" aria-selected="true"><?php esc_html_e( 'Check', 'wp-git-sync' ); ?></a>
+					<a id="wpgs-tab-content-link" href="#wpgs-tab-content" class="nav-tab" role="tab" data-tab="wpgs-tab-content" aria-controls="wpgs-tab-content" aria-selected="false"><?php esc_html_e( 'Content', 'wp-git-sync' ); ?> <span class="wpgs-tab-light <?php echo esc_attr( $content_status_class ); ?>" aria-hidden="true"></span></a>
+					<a id="wpgs-tab-post-link" href="#wpgs-tab-post" class="nav-tab" role="tab" data-tab="wpgs-tab-post" aria-controls="wpgs-tab-post" aria-selected="false"><?php esc_html_e( 'Post', 'wp-git-sync' ); ?> <span class="wpgs-tab-light <?php echo esc_attr( $post_status_class ); ?>" aria-hidden="true"></span></a>
+					<a id="wpgs-tab-meta-link" href="#wpgs-tab-meta" class="nav-tab" role="tab" data-tab="wpgs-tab-meta" aria-controls="wpgs-tab-meta" aria-selected="false"><?php esc_html_e( 'Meta', 'wp-git-sync' ); ?> <span class="wpgs-tab-light <?php echo esc_attr( $meta_status_class ); ?>" aria-hidden="true"></span></a>
 				</nav>
 
 				<section id="wpgs-tab-check" class="wpgs-tab-panel is-active" role="tabpanel" aria-labelledby="wpgs-tab-check-link">
 					<article class="wpgs-card">
-						<h2 class="wpgs-card-title">Latest check</h2>
+						<h2 class="wpgs-card-title"><?php esc_html_e( 'Latest check', 'wp-git-sync' ); ?></h2>
 						<dl class="wpgs-detail-grid">
 							<div class="wpgs-detail-row">
-								<dt>Checked at</dt>
+								<dt><?php esc_html_e( 'Checked at', 'wp-git-sync' ); ?></dt>
 								<dd><?php echo esc_html( (string) ( $diff['checked_at'] ?? '' ) ); ?></dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Content changed</dt>
-								<dd><?php echo esc_html( $content_changed ? 'Yes' : 'No' ); ?></dd>
+								<dt><?php esc_html_e( 'Content changed', 'wp-git-sync' ); ?></dt>
+								<dd><?php echo esc_html( $content_changed ? __( 'Yes', 'wp-git-sync' ) : __( 'No', 'wp-git-sync' ) ); ?></dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Post changed</dt>
-								<dd><?php echo esc_html( $post_changed ? 'Yes' : 'No' ); ?></dd>
+								<dt><?php esc_html_e( 'Post changed', 'wp-git-sync' ); ?></dt>
+								<dd><?php echo esc_html( $post_changed ? __( 'Yes', 'wp-git-sync' ) : __( 'No', 'wp-git-sync' ) ); ?></dd>
 							</div>
 							<div class="wpgs-detail-row">
-								<dt>Meta changed</dt>
-								<dd><?php echo esc_html( $meta_changed ? 'Yes' : 'No' ); ?></dd>
+								<dt><?php esc_html_e( 'Meta changed', 'wp-git-sync' ); ?></dt>
+								<dd><?php echo esc_html( $meta_changed ? __( 'Yes', 'wp-git-sync' ) : __( 'No', 'wp-git-sync' ) ); ?></dd>
 							</div>
 						</dl>
 						<?php if ( $content_changed || $post_changed || $meta_changed ) : ?>
 							<div class="wpgs-action-row wpgs-check-import-row">
 								<?php if ( $content_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post content using the remote content file. Continue?');">
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('<?php echo esc_js( __( 'This will overwrite local post content using the remote content file. Continue?', 'wp-git-sync' ) ); ?>');">
 										<input type="hidden" name="action" value="wpgs_pull_post" />
 										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
 										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Content', 'secondary', 'submit', false ); ?>
+										<?php submit_button( __( 'Import Content', 'wp-git-sync' ), 'secondary', 'submit', false ); ?>
 									</form>
 								<?php endif; ?>
 								<?php if ( $post_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will overwrite local post table fields using the remote post JSON. Continue?');">
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('<?php echo esc_js( __( 'This will overwrite local post table fields using the remote post JSON. Continue?', 'wp-git-sync' ) ); ?>');">
 										<input type="hidden" name="action" value="wpgs_pull_post_data" />
 										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
 										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_data_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Post Data', 'secondary', 'submit', false ); ?>
+										<?php submit_button( __( 'Import Post Data', 'wp-git-sync' ), 'secondary', 'submit', false ); ?>
 									</form>
 								<?php endif; ?>
 								<?php if ( $meta_changed ) : ?>
-									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('This will replace local post meta using the remote meta JSON. Continue?');">
+									<form method="post" action="<?php echo esc_url( $action_url ); ?>" onsubmit="return confirm('<?php echo esc_js( __( 'This will replace local post meta using the remote meta JSON. Continue?', 'wp-git-sync' ) ); ?>');">
 										<input type="hidden" name="action" value="wpgs_pull_post_meta" />
 										<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
 										<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'wpgs_pull_post_meta_' . (int) $post_id ) ); ?>" />
-										<?php submit_button( 'Import Meta Data', 'secondary', 'submit', false ); ?>
+										<?php submit_button( __( 'Import Meta Data', 'wp-git-sync' ), 'secondary', 'submit', false ); ?>
 									</form>
 								<?php endif; ?>
 							</div>
@@ -179,7 +179,7 @@ final class WPGS_Admin_Page_Diff {
 
 				<section id="wpgs-tab-content" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-content-link" hidden>
 					<?php if ( ! $content_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
+						<div class="wpgs-empty-panel"><?php esc_html_e( '(no changes)', 'wp-git-sync' ); ?></div>
 						<?php else : ?>
 							<div class="wpgs-diff-output wpgs-diff-surface">
 								<?php echo wp_kses_post( (string) ( $diff['content_diff'] ?? '' ) ); ?>
@@ -189,7 +189,7 @@ final class WPGS_Admin_Page_Diff {
 
 				<section id="wpgs-tab-post" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-post-link" hidden>
 					<?php if ( ! $post_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
+						<div class="wpgs-empty-panel"><?php esc_html_e( '(no changes)', 'wp-git-sync' ); ?></div>
 						<?php else : ?>
 							<div class="wpgs-diff-output wpgs-diff-surface">
 								<?php echo wp_kses_post( (string) ( $diff['post_diff'] ?? '' ) ); ?>
@@ -199,7 +199,7 @@ final class WPGS_Admin_Page_Diff {
 
 				<section id="wpgs-tab-meta" class="wpgs-tab-panel" role="tabpanel" aria-labelledby="wpgs-tab-meta-link" hidden>
 					<?php if ( ! $meta_changed ) : ?>
-						<div class="wpgs-empty-panel">(no changes)</div>
+						<div class="wpgs-empty-panel"><?php esc_html_e( '(no changes)', 'wp-git-sync' ); ?></div>
 						<?php else : ?>
 							<div class="wpgs-diff-output wpgs-diff-surface">
 								<?php echo wp_kses_post( (string) ( $diff['meta_diff'] ?? '' ) ); ?>
@@ -208,11 +208,11 @@ final class WPGS_Admin_Page_Diff {
 					</section>
 			<?php else : ?>
 				<article class="wpgs-card wpgs-check-state-card">
-					<h2 class="wpgs-card-title">Check</h2>
+					<h2 class="wpgs-card-title"><?php esc_html_e( 'Check', 'wp-git-sync' ); ?></h2>
 					<?php if ( $has_sync_state ) : ?>
-						<p class="description">No check has been run yet. Click "Check For Changes" above.</p>
+						<p class="description"><?php esc_html_e( 'No check has been run yet. Click "Check For Changes" above.', 'wp-git-sync' ); ?></p>
 					<?php else : ?>
-						<p class="description">No sync metadata found yet. Export this post first to enable checks.</p>
+						<p class="description"><?php esc_html_e( 'No sync metadata found yet. Export this post first to enable checks.', 'wp-git-sync' ); ?></p>
 					<?php endif; ?>
 				</article>
 			<?php endif; ?>

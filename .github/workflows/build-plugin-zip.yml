@@ -28,7 +28,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          PLUGIN_SLUG="$(basename "$GITHUB_WORKSPACE")"
+          PLUGIN_SLUG="$(php -r '
+          $json = json_decode(file_get_contents($argv[1]), true);
+          if (!is_array($json) || empty($json["slug"]) || !is_string($json["slug"])) {
+            fwrite(STDERR, "packages.json is missing a valid slug string\n");
+            exit(1);
+          }
+          echo $json["slug"];
+          ' "$GITHUB_WORKSPACE/packages.json")"
           PLUGIN_VERSION="$(php -r '
           $json = json_decode(file_get_contents($argv[1]), true);
           if (!is_array($json) || empty($json["version"]) || !is_string($json["version"])) {
