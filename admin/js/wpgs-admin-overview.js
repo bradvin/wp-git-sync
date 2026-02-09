@@ -116,16 +116,14 @@
 		var used = Math.max(0, parseInt(value.used || 0, 10) || 0);
 		var remaining = Math.max(0, parseInt(value.remaining || 0, 10) || 0);
 		var reset = Math.max(0, parseInt(value.reset || 0, 10) || 0);
-		var resource = value.resource ? String(value.resource) : '';
-		if (limit < 1 && used < 1 && remaining < 1 && reset < 1 && !resource) {
+		if (limit < 1 && used < 1 && remaining < 1 && reset < 1) {
 			return null;
 		}
 		return {
 			limit: limit,
 			used: used,
 			remaining: remaining,
-			reset: reset,
-			resource: resource
+			reset: reset
 		};
 	}
 
@@ -150,9 +148,6 @@
 		if (rate.reset > 0) {
 			var resetDate = new Date(rate.reset * 1000);
 			parts.push(t('resetsAtLabel') + ' ' + resetDate.toUTCString());
-		}
-		if (rate.resource) {
-			parts.push(t('resourceLabel') + ': ' + rate.resource);
 		}
 		return parts.join(' | ');
 	}

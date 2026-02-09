@@ -115,7 +115,6 @@ final class WPGS_Admin {
 						'rateLimitPrefix'              => __( 'GitHub rate limit: used', 'wp-git-sync' ),
 						'remainingLabel'               => __( 'remaining', 'wp-git-sync' ),
 						'resetsAtLabel'                => __( 'resets at', 'wp-git-sync' ),
-						'resourceLabel'                => __( 'resource', 'wp-git-sync' ),
 						'exportProgressPrefix'         => __( 'export:', 'wp-git-sync' ),
 						'succeededLabel'               => __( 'Succeeded:', 'wp-git-sync' ),
 						'failedLabel'                  => __( 'Failed:', 'wp-git-sync' ),
