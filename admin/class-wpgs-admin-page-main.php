@@ -235,7 +235,6 @@ final class WPGS_Admin_Page_Main {
 		$used = max( 0, (int) ( $rate_limit['used'] ?? 0 ) );
 		$remaining = max( 0, (int) ( $rate_limit['remaining'] ?? 0 ) );
 		$reset = max( 0, (int) ( $rate_limit['reset'] ?? 0 ) );
-		$resource = trim( (string) ( $rate_limit['resource'] ?? '' ) );
 
 		if ( $limit < 1 ) {
 			return 'GitHub rate limit: no data yet. Start an export to fetch current usage.';
@@ -246,9 +245,6 @@ final class WPGS_Admin_Page_Main {
 		];
 		if ( $reset > 0 ) {
 			$parts[] = 'resets at ' . gmdate( 'Y-m-d H:i:s', $reset ) . ' UTC';
-		}
-		if ( '' !== $resource ) {
-			$parts[] = 'resource: ' . $resource;
 		}
 		return implode( ' | ', $parts );
 	}
