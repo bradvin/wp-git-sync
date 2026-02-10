@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Git Sync
  * Description: Sync WordPress posts to GitHub.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Author: Foo Bender
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'WPGS_VERSION', '0.1.1' );
+define( 'WPGS_VERSION', '0.1.2' );
 
 /**
  * Absolute path to main plugin file.
