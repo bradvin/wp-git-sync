@@ -423,16 +423,20 @@ final class WPGS_Exporter {
 	 */
 	private function generate_repo_index_readme( array $mapping ): string {
 		$groups = [];
+		$post_type_labels = [];
 
 		$items = isset( $mapping['items'] ) && is_array( $mapping['items'] ) ? $mapping['items'] : [];
-		foreach ( $items as $id => $item ) {
+		foreach ( $items as $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
 			}
 			$post_type = sanitize_key( (string) ( $item['post_type'] ?? '' ) );
 			$post_type = '' !== $post_type ? $post_type : 'unknown';
-				/* translators: %s: Post ID. */
-				$title     = (string) ( $item['post_title'] ?? sprintf( __( 'Post %s', 'wp-git-sync' ), $id ) );
+			$post_type_object = get_post_type_object( $post_type );
+			$post_type_labels[ $post_type ] = ( $post_type_object && isset( $post_type_object->labels->singular_name ) && '' !== trim( (string) $post_type_object->labels->singular_name ) )
+				? (string) $post_type_object->labels->singular_name
+				: ucfirst( str_replace( [ '-', '_' ], ' ', $post_type ) );
+
 			$permalink = (string) ( $item['permalink'] ?? '' );
 			$content_path = (string) ( $item['content_path'] ?? '' );
 			$post_path    = (string) ( $item['post_path'] ?? '' );
@@ -441,12 +445,13 @@ final class WPGS_Exporter {
 				continue;
 			}
 
-			$post_link    = sprintf( '[%s](%s)', $this->md_escape( $title ), $permalink );
+			$permalink_path = $this->permalink_relative_path( $permalink );
+			$post_link    = sprintf( '[%s](%s)', $this->md_escape( $permalink_path ), $permalink );
 			$post_json    = '' !== $post_path ? sprintf( '[%1$s](%2$s)', 'post.json', $post_path ) : '-';
 			$meta_json    = '' !== $meta_path ? sprintf( '[%1$s](%2$s)', 'meta.json', $meta_path ) : '-';
 			$content_link = sprintf( '[%1$s](%2$s)', 'content.md', $content_path );
 			$row = [
-				'sort' => strtolower( $title . '|' . $permalink ),
+				'sort' => strtolower( $permalink_path . '|' . $permalink ),
 				'line' => sprintf( '| %s | %s | %s | %s |', $post_link, $post_json, $meta_json, $content_link ),
 			];
 			$groups[ $post_type ][] = $row;
@@ -477,14 +482,15 @@ final class WPGS_Exporter {
 		if ( empty( $groups ) ) {
 			$out[] = '## ' . __( 'Items', 'wp-git-sync' );
 			$out[] = '';
-			$out[] = '| ' . __( 'Post', 'wp-git-sync' ) . ' | ' . __( 'Post JSON', 'wp-git-sync' ) . ' | ' . __( 'Meta JSON', 'wp-git-sync' ) . ' | ' . __( 'Content', 'wp-git-sync' ) . ' |';
+			$out[] = '| ' . __( 'Item', 'wp-git-sync' ) . ' | ' . __( 'Post', 'wp-git-sync' ) . ' | ' . __( 'Meta', 'wp-git-sync' ) . ' | ' . __( 'Content', 'wp-git-sync' ) . ' |';
 			$out[] = '| --- | --- | --- | --- |';
 			$out[] = '| (none) | - | - | - |';
 		} else {
 			foreach ( $groups as $post_type => $rows ) {
 				$out[] = '## ' . $post_type;
 				$out[] = '';
-				$out[] = '| ' . __( 'Post', 'wp-git-sync' ) . ' | ' . __( 'Post JSON', 'wp-git-sync' ) . ' | ' . __( 'Meta JSON', 'wp-git-sync' ) . ' | ' . __( 'Content', 'wp-git-sync' ) . ' |';
+				$first_column_label = (string) ( $post_type_labels[ $post_type ] ?? $post_type );
+				$out[] = '| ' . $this->md_escape( $first_column_label ) . ' | ' . __( 'Post', 'wp-git-sync' ) . ' | ' . __( 'Meta', 'wp-git-sync' ) . ' | ' . __( 'Content', 'wp-git-sync' ) . ' |';
 				$out[] = '| --- | --- | --- | --- |';
 				foreach ( $rows as $row ) {
 					$out[] = (string) $row['line'];
@@ -534,5 +540,34 @@ final class WPGS_Exporter {
 	 */
 	private function md_escape( string $text ): string {
 		return str_replace( [ '\\', '|', '[', ']', "\n", "\r" ], [ '\\\\', '\|', '\\[', '\\]', ' ', '' ], $text );
+	}
+
+	/**
+	 * Convert a permalink into a repo-friendly site-relative path label.
+	 *
+	 * Examples: /blog/my-post, /parent/sample-page
+	 *
+	 * @param string $permalink Absolute permalink URL.
+	 * @return string Relative path label.
+	 */
+	private function permalink_relative_path( string $permalink ): string {
+		$path = wp_parse_url( $permalink, PHP_URL_PATH );
+		$path = is_string( $path ) ? $path : '';
+		if ( '' === $path ) {
+			return $permalink;
+		}
+
+		$path = '/' . ltrim( $path, '/' );
+		if ( '/' !== $path ) {
+			$path = rtrim( $path, '/' );
+			$path = '' === $path ? '/' : $path;
+		}
+
+		$query = wp_parse_url( $permalink, PHP_URL_QUERY );
+		if ( is_string( $query ) && '' !== $query ) {
+			$path .= '?' . $query;
+		}
+
+		return $path;
 	}
 }
