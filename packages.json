@@ -1,7 +1,7 @@
 {
   "name": "WP Git Sync",
   "slug": "wp-git-sync",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sync WordPress content and metadata to GitHub.",
   "type": "wordpress-plugin",
   "author": "Foo Bender",

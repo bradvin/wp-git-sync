@@ -1,15 +1,16 @@
 # WP Git Sync
 
-Contributors: bradvin, foobender
-Tags: git, github, sync
-Requires at least: 6.4
-Tested up to: 6.9
-Requires PHP: 7.4
-Stable tag: 0.1.1
-License: GPLv2 or later
-License URI: https://www.gnu.org/licenses/gpl-2.0.html
-
 Sync WordPress content and metadata to GitHub.
+
+| Key | Value |
+| --- | --- |
+| Contributors | bradvin, foo-bender |
+| Tags | git, github, sync |
+| Requires at least | 6.4 |
+| Tested up to | 6.9 |
+| Requires PHP | 7.4 |
+| License | GPLv2 or later |
+| License URI | https://www.gnu.org/licenses/gpl-2.0.html |
 
 ## Why I built this
 
